@@ -5,10 +5,14 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "asyncpg>=0.31.0",
     "chonkie>=1.5.4",
     "docling>=2.71.0",
     "dotenv>=0.9.9",
     "fastapi>=0.128.0",
+    "httpx>=0.28.1",
+    "openai>=2.16.0",
+    "python-multipart>=0.0.22",
     "sentence-transformers>=5.2.2",
     "uvicorn>=0.40.0",
 ]

@@ -3,10 +3,14 @@ from fastapi import FastAPI, BackgroundTasks, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
 import os
-from processing import process
-from repository.chunk_repo import chunkRepo
+from src.rag.processing import DocumentProcessor
+from src.repository.chunk_repo import initialize_chunk_repo
 
 app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to BK-SAMs API"}
 
 @app.post("/upload")
 async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
@@ -25,10 +29,11 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
         f.write(await file.read())
 
     # Insert document to database
-    chunkRepo.insert_document(doc_id, file_path, suffix, "anonymous")
+    chunkRepo = await initialize_chunk_repo()
+    await chunkRepo.insert_document(doc_id, file_path, suffix, "anonymous")
 
     # Process document in background (Parsing, chunking, embedding, storing chunks)
-    background_tasks.add_task(process, file_path, doc_id)
+    background_tasks.add_task(DocumentProcessor.process, file_path, doc_id)
 
     return JSONResponse({"status": "parsed", "filename": file.filename, "document_id": doc_id})
 

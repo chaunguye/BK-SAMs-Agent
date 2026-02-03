@@ -1,4 +1,4 @@
-from database.database_connect import get_db_pool
+from src.database.database_connect import get_db_pool
 class ChunkRepository:
     def __init__(self, pool):
         self.pool = pool
@@ -15,9 +15,12 @@ class ChunkRepository:
         # chunks_data is a list of tuples: (id, text, embedding, doc_id)
         query = """
             INSERT INTO chunk (id, text_content, embedding, document_id)
-            VALUES ($1, $2, $3, $4)
+            VALUES ($1, $2, $3::vector, $4)
         """
         async with self.pool.acquire() as conn:
             await conn.executemany(query, chunks_data)
 
-chunkRepo = ChunkRepository(get_db_pool())
+async def initialize_chunk_repo():
+    pool = await get_db_pool()
+    chunkRepo = ChunkRepository(pool)
+    return chunkRepo

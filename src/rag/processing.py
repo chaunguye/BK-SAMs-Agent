@@ -2,13 +2,13 @@ from docling.document_converter import DocumentConverter
 from chonkie import RecursiveChunker
 from sentence_transformers import SentenceTransformer
 import uuid
-from repository.chunk_repo import chunkRepo
+from src.repository.chunk_repo import initialize_chunk_repo
 
 class DocumentProcessor:
     def __init__(self):
-        self.converter = None
-        self.chunker = None
-        self.embedder = None
+        self._converter = None
+        self._chunker = None
+        self._embedder = None
     
     @property
     def converter(self) -> DocumentConverter:
@@ -28,18 +28,24 @@ class DocumentProcessor:
             self._embedder = SentenceTransformer("all-MiniLM-L6-v2")
         return self._embedder
 
-    def process(self, file_path: str, doc_id: str) -> str:
+    async def process(self, file_path: str, doc_id: str) -> str:
 
         # parsing document
-        doc = self.converter.convert_to_markdown(file_path).document
+        doc = self.converter.convert(file_path).document
         markeddown_text = doc.export_to_markdown()
 
         # chunking document
-        chunks = self.chunker.chunk_text(markeddown_text)
+        chunks = self.chunker(markeddown_text)
 
         texts = [chunk.text for chunk in chunks]
         embeddings = self.embedder.encode(texts)
+        embeddings_str = ["[" + ",".join(str(x) for x in embedding) + "]" for embedding in embeddings]
 
-        for chunk, embedding in zip(chunks, embeddings):
-            chunk_id = str(uuid.uuid4())
-            chunkRepo.batch_insert_chunks([(chunk_id, chunk.text, embedding.tolist(), doc_id)])
+        # Repo for SQL operations
+        chunkRepo = await initialize_chunk_repo()
+
+        # for chunk, embedding in zip(chunks, embeddings):
+        #     chunk_id = str(uuid.uuid4())
+        #     await chunkRepo.batch_insert_chunks([(chunk_id, chunk.text, embedding.tolist(), doc_id)])
+        await chunkRepo.batch_insert_chunks([(str(uuid.uuid4()), chunk.text, embedding, doc_id) for chunk, embedding in zip(chunks, embeddings_str)])
+DocumentProcessor = DocumentProcessor()
