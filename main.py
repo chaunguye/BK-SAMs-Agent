@@ -3,10 +3,17 @@ from fastapi import FastAPI, BackgroundTasks, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 import uvicorn
 import os
-from src.rag.processing import DocumentProcessor
-from src.repository.chunk_repo import initialize_chunk_repo
+from src.rag.processing import get_document_processor
+from src.repository.chunk_repo import get_chunk_repo
+import aiofiles
+import logfire
 
 app = FastAPI()
+# app.mount("/chat", agent.to_web())  # Mount the agent's web interface at /chat
+
+logfire.configure()
+logfire.instrument_pydantic_ai()
+logfire.instrument_fastapi(app)
 
 @app.get("/")
 def read_root():
@@ -25,15 +32,16 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
     file_path = f"documents/{doc_id}_{file.filename}"
     
     # Save file locally
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(await file.read())
 
     # Insert document to database
-    chunkRepo = await initialize_chunk_repo()
-    await chunkRepo.insert_document(doc_id, file_path, suffix, "anonymous")
+    chunkRepo = await get_chunk_repo()
+    await chunkRepo.insert_document(doc_id, file_path, suffix, "anonymous", file.filename)
 
     # Process document in background (Parsing, chunking, embedding, storing chunks)
-    background_tasks.add_task(DocumentProcessor.process, file_path, doc_id)
+    
+    background_tasks.add_task((get_document_processor()).process, file_path, doc_id)
 
     return JSONResponse({"status": "parsed", "filename": file.filename, "document_id": doc_id})
 
