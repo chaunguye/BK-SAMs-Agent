@@ -7,6 +7,7 @@ from src.rag.processing import get_document_processor
 from src.repository.chunk_repo import get_chunk_repo
 import aiofiles
 import logfire
+from src.agents.agent import capstone_agent, AgentConfig
 
 app = FastAPI()
 # app.mount("/chat", agent.to_web())  # Mount the agent's web interface at /chat
@@ -44,6 +45,14 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
     background_tasks.add_task((get_document_processor()).process, file_path, doc_id)
 
     return JSONResponse({"status": "parsed", "filename": file.filename, "document_id": doc_id})
+
+@app.post("/chat")
+async def chat_with_agent(message: str):
+    """This endpoint is used to send a message to the agent and get a response."""
+
+    deps = AgentConfig(document_processor=get_document_processor())
+    response = await capstone_agent.run(message, deps=deps)
+    return JSONResponse({"response": response.output})
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
