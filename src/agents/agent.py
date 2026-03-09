@@ -12,7 +12,8 @@ load_dotenv()
 class AgentConfig:
     document_processor: DocumentProcessor
 
-capstone_agent = Agent('google-gla:gemini-2.5-flash', 
+# google-gla:gemini-2.5-flash
+capstone_agent = Agent('groq:openai/gpt-oss-120b', 
                        instructions="""## 🚩 Agent System Prompt
 
 **Role:** You are the **BK-SAMs Assistant**, a friendly and grounded AI guide for university students. Your goal is to help students discover social activities, understand campus events, and manage their registrations.
@@ -59,8 +60,6 @@ async def search_chunks(ctx: RunContext[AgentConfig], query: str, top_k: int = 5
         document_processor = get_document_processor()
     relevant_chunks = await document_processor.search_chunk_by_query(query, top_k)
     return 'Relevant chunks: ' + ','.join([chunk['text_content'] for chunk in relevant_chunks])
-
-
 
 
 app = capstone_agent.to_web()

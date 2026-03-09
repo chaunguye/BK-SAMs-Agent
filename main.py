@@ -54,5 +54,12 @@ async def chat_with_agent(message: str):
     response = await capstone_agent.run(message, deps=deps)
     return JSONResponse({"response": response.output})
 
+@app.get("/test_query")
+async def test_query(query: str):
+    """This endpoint is used to test the search functionality of the document processor."""
+    document_processor = get_document_processor()
+    results = await document_processor.search_chunk_by_query(query)
+    return JSONResponse({"results": [result['text_content'] for result in results]})
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
