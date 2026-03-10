@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from dataclasses import dataclass
 from src.rag.processing import DocumentProcessor, get_document_processor
 import asyncio
+from pydantic import Field
 
 load_dotenv()
 
@@ -49,7 +50,9 @@ capstone_agent = Agent('groq:openai/gpt-oss-120b',
 """, deps_type=AgentConfig)
 
 @capstone_agent.tool
-async def search_chunks(ctx: RunContext[AgentConfig], query: str, top_k: int = 5) -> str:
+async def search_chunks(ctx: RunContext[AgentConfig],
+                        query: str = Field (..., description="The student's query about activities or events. Extract the core technical query for searching relevant chunks in the database."),
+                        top_k: int = Field(default=5, description="The number of top relevant chunks to return.")) -> str:
     """
     Search for relevant chunks in the database based on the query.
     """
@@ -61,6 +64,24 @@ async def search_chunks(ctx: RunContext[AgentConfig], query: str, top_k: int = 5
     relevant_chunks = await document_processor.search_chunk_by_query(query, top_k)
     return 'Relevant chunks: ' + ','.join([chunk['text_content'] for chunk in relevant_chunks])
 
+
+@capstone_agent.tool
+async def search_activities_details(ctx: RunContext[AgentConfig], 
+                                    time_start: str = Field(default=None, description="The start time of the activity (format: YYYY-MM-DD)"),
+                                    name: str = Field(default=None, description="The name of the activity"),
+                                    time_end: str = Field(default=None, description="The end time of the activity (format: YYYY-MM-DD)"),
+                                    location: str = Field(default=None, description="The location of the activity"),
+                                    status: str = Field(default=None, description="The status of the activity")) -> str:
+    """
+    Search for relevant activities based on activity name, time range, location, and status.
+    """
+    if ctx.deps and ctx.deps.document_processor:
+        document_processor = ctx.deps.document_processor
+    else:
+        document_processor = get_document_processor()
+    
+    relevant_activities = await document_processor.search_relevant_activity(time_start=time_start, name=name, time_end=time_end, location=location, status=status, top_k=5)
+    return "Activity search is currently under maintenance. I'll be able to help you with that very soon!"
 
 app = capstone_agent.to_web()
 

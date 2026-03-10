@@ -76,6 +76,12 @@ class DocumentProcessor:
         with logfire.span("Searching Chunks in Database"):
             results = await chunkRepo.search_chunks_by_embedding(query_embedding_str, top_k)
         return results
+
+    async def search_relevant_activity(self, time_start: str, name: str = None, time_end: str = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
+        chunkRepo = await get_chunk_repo()
+        with logfire.span("Searching Relevant Activities"):
+            results = await chunkRepo.search_relevant_activity(time_start, name, time_end, location, status, sort_by, desc, top_k)
+        return results
     
 _document_processor = None
 def get_document_processor():
