@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 from dataclasses import dataclass
 from src.rag.processing import DocumentProcessor, get_document_processor
 import asyncio
+from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.models.gemini import GeminiModel
 from pydantic import Field
 
 load_dotenv()
@@ -13,9 +16,15 @@ load_dotenv()
 class AgentConfig:
     document_processor: DocumentProcessor
 
-# google-gla:gemini-2.5-flash
-capstone_agent = Agent('groq:openai/gpt-oss-120b', 
-                       instructions="""## 🚩 Agent System Prompt
+primary_model = GroqModel('groq:openai/gpt-oss-120b')
+secondary_model = GroqModel('qwen/qwen3-32b')
+fallback_model = FallbackModel(primary_model, secondary_model)
+
+capstone_agent = Agent(FallbackModel, deps_type = AgentConfig)
+
+@capstone_agent.instruction
+def system_prompt() -> str:
+    return """## 🚩 Agent System Prompt
 
 **Role:** You are the **BK-SAMs Assistant**, a friendly and grounded AI guide for university students. Your goal is to help students discover social activities, understand campus events, and manage their registrations.
 
@@ -47,7 +56,7 @@ capstone_agent = Agent('groq:openai/gpt-oss-120b',
 ### 3. Handling Spoilers & Context (System Requirement)
 
 * **Crucial:** Always refer only to events and information provided in the current context. Do not "hallucinate" future events or details not found in the search results.
-""", deps_type=AgentConfig)
+"""
 
 @capstone_agent.tool
 async def search_chunks(ctx: RunContext[AgentConfig],
