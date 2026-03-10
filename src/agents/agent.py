@@ -16,13 +16,13 @@ load_dotenv()
 class AgentConfig:
     document_processor: DocumentProcessor
 
-primary_model = GroqModel('groq:openai/gpt-oss-120b')
+primary_model = GroqModel('openai/gpt-oss-120b')
 secondary_model = GroqModel('qwen/qwen3-32b')
 fallback_model = FallbackModel(primary_model, secondary_model)
 
-capstone_agent = Agent(FallbackModel, deps_type = AgentConfig)
+capstone_agent = Agent(fallback_model, deps_type = AgentConfig)
 
-@capstone_agent.instruction
+@capstone_agent.instructions
 def system_prompt() -> str:
     return """## 🚩 Agent System Prompt
 
@@ -90,8 +90,9 @@ async def search_activities_details(ctx: RunContext[AgentConfig],
         document_processor = get_document_processor()
     
     relevant_activities = await document_processor.search_relevant_activity(time_start=time_start, name=name, time_end=time_end, location=location, status=status, top_k=5)
-    return "Activity search is currently under maintenance. I'll be able to help you with that very soon!"
+    return 'Relevant activities: ' + ','.join([activity['name'] for activity in relevant_activities])
 
+capstone_agent.model = primary_model
 app = capstone_agent.to_web()
 
 
