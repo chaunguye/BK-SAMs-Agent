@@ -1,4 +1,6 @@
 from src.database.database_connect import get_db_pool
+from datetime import datetime
+
 class ChunkRepository:
     def __init__(self, pool):
         self.pool = pool
@@ -31,7 +33,7 @@ class ChunkRepository:
             rows = await conn.fetch(query, query_embedding, top_k)
         return [dict(row) for row in rows]
 
-    async def search_relevant_activity(self, time_start: str = None, name: str = None, time_end: str = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
+    async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
         query = """
             SELECT *
             FROM activity
@@ -39,7 +41,7 @@ class ChunkRepository:
             AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
             AND ($3::timestamp IS NULL OR end_time <= $3)
             AND ($4::text IS NULL OR location ILIKE '%' || $4 || '%')
-            AND ($5::activity_status IS NULL OR status = $5)
+            AND ($5::activity_status IS NULL OR status = $5::activity_status)
             ORDER BY {} {}
             LIMIT $6
         """
