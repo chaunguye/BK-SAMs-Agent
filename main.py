@@ -1,6 +1,7 @@
 import uuid
 from fastapi import FastAPI, BackgroundTasks, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+from rag.activity_controller import ActivityController
 import uvicorn
 import os
 from src.rag.processing import get_document_processor
@@ -50,7 +51,7 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
 async def chat_with_agent(message: str):
     """This endpoint is used to send a message to the agent and get a response."""
 
-    deps = AgentConfig(document_processor=get_document_processor())
+    deps = AgentConfig(document_processor=get_document_processor(), activity_manager=ActivityController())
     response = await capstone_agent.run(message, deps=deps)
     return JSONResponse({"response": response.output})
 
