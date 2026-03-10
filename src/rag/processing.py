@@ -66,9 +66,12 @@ class DocumentProcessor:
 
     async def search_chunk_by_query(self, query: str, top_k: int = 5):
         loop = asyncio.get_running_loop()
+        
         with logfire.span("Embedding Search Query"):
+            # query_embedding = self.embedder.encode([query])
             query_embedding = await loop.run_in_executor(_executor, self.embedder.encode, [query])
         query_embedding_str = "[" + ",".join(str(x) for x in query_embedding[0]) + "]"
+
         chunkRepo = await get_chunk_repo()
         with logfire.span("Searching Chunks in Database"):
             results = await chunkRepo.search_chunks_by_embedding(query_embedding_str, top_k)

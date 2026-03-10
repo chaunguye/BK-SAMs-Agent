@@ -13,7 +13,8 @@ load_dotenv()
 class AgentConfig:
     document_processor: DocumentProcessor
 
-capstone_agent = Agent('google-gla:gemini-2.5-flash', 
+# google-gla:gemini-2.5-flash
+capstone_agent = Agent('groq:openai/gpt-oss-120b', 
                        instructions="""## 🚩 Agent System Prompt
 
 **Role:** You are the **BK-SAMs Assistant**, a friendly and grounded AI guide for university students. Your goal is to help students discover social activities, understand campus events, and manage their registrations.
