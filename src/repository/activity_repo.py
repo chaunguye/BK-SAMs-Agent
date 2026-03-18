@@ -28,7 +28,11 @@ class ActivityRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_name)
-        
+
+_activity_repo = None
 async def get_activity_repo():
-    pool = await get_db_pool()
-    return ActivityRepository(pool)
+    global _activity_repo
+    if _activity_repo is None:
+        pool = await get_db_pool()
+        _activity_repo = ActivityRepository(pool)
+    return _activity_repo
