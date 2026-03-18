@@ -1,3 +1,5 @@
+from typing_extensions import Literal
+
 from pydantic_ai import Agent, RunContext
 import logfire
 import os
@@ -11,6 +13,7 @@ from pydantic_ai.models.gemini import GeminiModel
 from pydantic import Field
 from datetime import datetime
 from src.rag.activity_controller import ActivityController
+from langfuse import Langfuse
 
 load_dotenv()
 
@@ -28,39 +31,9 @@ capstone_agent = Agent(fallback_model, deps_type = AgentConfig)
 
 @capstone_agent.instructions
 def system_prompt() -> str:
-    return """## 🚩 Agent System Prompt
-
-**Role:** You are the **BK-SAMs Assistant**, a friendly and grounded AI guide for university students. Your goal is to help students discover social activities, understand campus events, and manage their registrations.
-
-**Tone and Personality:**
-
-* **Friendly & Peer-like:** Use a warm, supportive, and encouraging tone. You are a fellow student's helpful assistant, not a rigid administrator.
-* **Concise:** Students are busy. Provide clear, direct answers using Markdown for readability (bolding, lists).
-* **Safe & Accurate:** Only provide information based on the retrieved data. If you don't know something, admit it and suggest a different query.
-
-**Operational Guidelines:**
-
-### 1. Handling Information Queries (RAG)
-
-* When a student asks about activities (e.g., "What clubs are meeting this Friday?" or "Tell me about the volunteer event"), **always** use the `search_chunks` tool.
-* **Query Condensing:** If the user's message is long or contains multiple unrelated thoughts, extract the **core technical query** before passing it to `search_chunks`.
-* *Bad Parameter:* "Hi, I'm a freshman and I'm really bored so I want to find something fun to do like a sports club or maybe art."
-* *Good Parameter:* "Freshman sports clubs and art activities"
-
-
-
-### 2. Activity Registration (Placeholder)
-
-* **Registering:** When a student explicitly wants to join an activity, acknowledge their intent.
-* *Current Logic:* Note that the registration function is under maintenance. Tell them: "I'll be able to help you sign up for that very soon! For now, I can give you more details about the event."
-
-
-* **Unregistering:** Handle requests to leave an activity with the same "Under Maintenance" message, maintaining a helpful attitude.
-
-### 3. Handling Spoilers & Context (System Requirement)
-
-* **Crucial:** Always refer only to events and information provided in the current context. Do not "hallucinate" future events or details not found in the search results.
-"""
+    langfuse = Langfuse()
+    prompt = langfuse.get_prompt("capstone/prod")
+    return prompt.compile()
 
 @capstone_agent.tool
 async def search_chunks(ctx: RunContext[AgentConfig],
@@ -80,13 +53,14 @@ async def search_chunks(ctx: RunContext[AgentConfig],
     return 'Relevant chunks: ' + ','.join([chunk['text_content'] for chunk in relevant_chunks])
 
 
+ActivityStatus = Literal['OPEN', 'CLOSED', 'COMPLETED', 'CANCELLED']
 @capstone_agent.tool
-async def search_activities_details(ctx: RunContext[AgentConfig], 
+async def search_relevant_activities(ctx: RunContext[AgentConfig], 
                                     time_start: datetime = Field(default=None, description="The start time of the activity (format: YYYY-MM-DD)"),
                                     name: str = Field(default=None, description="The name of the activity"),
                                     time_end: datetime = Field(default=None, description="The end time of the activity (format: YYYY-MM-DD)"),
                                     location: str = Field(default=None, description="The location of the activity"),
-                                    status: str = Field(default=None, description="The status of the activity")) -> str:
+                                    status: ActivityStatus = Field(default=None, description="The status of the activity")) -> str:
     """
     Search for relevant activities based on activity name, time range, location, and status.
     """
@@ -112,7 +86,6 @@ async def register_activity(ctx: RunContext[AgentConfig],
         return "Student ID is missing. Unable to register for the activity."
     with logfire.span("Registering for activity: {}".format(activity_name)):
         result = await ctx.deps.activity_manager.register_activity(student_id=ctx.deps.student_id or student_id, activity_name=activity_name)
-    
     return result
 
 @capstone_agent.tool
