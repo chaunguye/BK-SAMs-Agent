@@ -20,3 +20,15 @@ class ActivityRepository:
         async with self.pool.acquire() as conn:
             result = await conn.execute(query, student_id, activity_id)
             return result == "DELETE 1"  # Check if one row was deleted
+
+    async def get_activity_by_name(self, activity_name: str):
+        query = """
+            SELECT * FROM activity
+            WHERE name = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(query, activity_name)
+        
+async def get_activity_repo():
+    pool = await get_db_pool()
+    return ActivityRepository(pool)
