@@ -2,11 +2,11 @@ import asyncio
 import uuid
 from fastapi import FastAPI, BackgroundTasks, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-from src.rag.activity_controller import ActivityController
+from src.service.activity_service import ActivityController
 from util.chat_request import ChatRequest
 import uvicorn
 import os
-from src.rag.processing import get_document_processor
+from src.service.chunk_service import get_document_processor
 from src.repository.chunk_repo import get_chunk_repo
 import aiofiles
 import logfire

@@ -5,14 +5,14 @@ import logfire
 import os
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from src.rag.processing import DocumentProcessor, get_document_processor
+from src.service.chunk_service import DocumentProcessor, get_document_processor
 import asyncio
 from pydantic_ai.models.groq import GroqModel
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.gemini import GeminiModel
 from pydantic import Field
 from datetime import datetime
-from src.rag.activity_controller import ActivityController
+from src.service.activity_service import ActivityController
 from langfuse import Langfuse
 
 load_dotenv()
