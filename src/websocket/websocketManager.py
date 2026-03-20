@@ -4,8 +4,9 @@ from fastapi import WebSocket
 from typing import Dict
 
 class WebsocketManager:
-    def __init__(self):
+    def __init__(self, limit: int = 100):
         self.connection: Dict[uuid.UUID, WebSocket] = {}
+        self.limit = limit
 
     async def connect(self, student_id: str, websocket: WebSocket):
         if student_id in self.connection:
@@ -13,6 +14,10 @@ class WebsocketManager:
                 await self.connection[student_id].close(code=1000)
             except:
                 pass # Already closed
+        if len(self.connection) >= self.limit:
+            await websocket.accept()
+            await websocket.send_json({"type": "error", "message": "Connection limit reached. Please try again later."})
+            await websocket.close()
         await websocket.accept()
         self.connection[student_id] = websocket
 

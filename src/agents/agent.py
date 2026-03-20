@@ -73,6 +73,8 @@ async def search_relevant_activities(ctx: RunContext[AgentConfig],
         relevant_activities = await chunk_service.search_relevant_activity(time_start=time_start, name=name, time_end=time_end, location=location, status=status, top_k=5)
         logfire.info(f"Search parameters - time_start: {time_start}, name: {name}, time_end: {time_end}, location: {location}, status: {status}")
         logfire.info(f"Found {len(relevant_activities)} relevant activities: {relevant_activities}")
+        if len(relevant_activities) == 0:
+            return "No relevant activities found based on the provided parameters."
     return relevant_activities
 
 @capstone_agent.tool

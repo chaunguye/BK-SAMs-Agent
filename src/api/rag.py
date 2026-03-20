@@ -5,7 +5,8 @@ import aiofiles
 import uuid
 from src.service.chunk_service import get_chunk_service
 from src.repository.chunk_repo import get_chunk_repo
-from src.middleware.authorization import StudentContext, get_student_context
+from src.middleware.authorization import StudentContext, verify_jwt
+import os
 from fastapi import Depends
 
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/upload", tags=["RAG Document Upload"])
 
 @router.post("")
 async def upload_document(file: UploadFile, background_tasks: BackgroundTasks, 
-                          student_context: StudentContext = Depends(get_student_context)):
+                          student_context: StudentContext = Depends(verify_jwt)):
     
     if student_context is None:
         raise HTTPException(status_code=401, detail="Unauthorized. Guest cannot upload documents.")
