@@ -1,3 +1,4 @@
+from src.cache.cache_manager import get_cache_manager
 from fastapi import APIRouter, WebSocket, Depends, HTTPException
 from src.util.chat_request import ChatRequest
 from src.agents.agent import capstone_agent, AgentConfig
@@ -18,6 +19,7 @@ from src.websocket.websocketManager import get_websocket_manager
 import asyncio
 from src.middleware.authorization import StudentContext, get_student_context
 import uuid
+from src.service.conversation_service import get_conversation_service
 
 router = APIRouter(prefix="/chat", tags=["Agent Chat"])
 
@@ -42,9 +44,11 @@ async def websocket_endpoint(websocket: WebSocket,
                              student_context: StudentContext = Depends(get_student_context)):
     websocketManager = get_websocket_manager()
     if student_context is None:
+        logfire.info("No valid JWT token provided. Assigning guest student context.")
         student_id = uuid.uuid4()
         student_context = StudentContext(student_id=str(student_id), student_name="guest")
-    
+    else:
+        logfire.info(f"Websocket connection initiated with student_id: {student_context.student_id}. Name: {student_context.student_name}")
     await websocketManager.connect(student_context.student_id, websocket)
     
     try:
@@ -55,20 +59,33 @@ async def websocket_endpoint(websocket: WebSocket,
                 print(f"Websocket connection with student_id: {student_context.student_id} timed out.")
                 await websocket.close()
                 break
+
+            conversation_service = get_conversation_service()
+            history = await conversation_service.get_conversation("a3ce1e87-3f9b-4f3a-bba5-65877b2e1e39") or []
+            
             deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id)
-            async for event in capstone_agent.run_stream_events(data, deps=deps):
+            
+            async for event in capstone_agent.run_stream_events(data, deps=deps,message_history=history):
                 # print(f"Type: {type(PartDeltaEvent).__name__}")
                 # print(f"Attributes: {dir(PartDeltaEvent)}")
                 if isinstance(event, PartDeltaEvent) and event.delta and isinstance(event.delta, TextPartDelta):
                     await websocketManager.send_personal_message(student_context.student_id, event.delta.content_delta, type="text")
+                
                 elif isinstance(event, PartEndEvent) and event.part and isinstance(event.part, TextPart):
                     await websocketManager.send_personal_message(student_context.student_id, "Agent has completed the task.", type="end")
+                
                 elif isinstance(event, FunctionToolCallEvent):
                     await websocketManager.send_personal_message(student_context.student_id, f"Calling tool: {event.part.tool_name} with args: {event.part.args}", type="tool_call")
+                
                 elif isinstance(event, AgentRunResultEvent):
                     await websocketManager.send_personal_message(student_context.student_id, f"Final result: {event}", type="end")
+                    message = event.result.new_messages()
+                    logfire.info(f"Saving conversation for student_id: {student_context.student_id}. Message: {message}")
+                    await conversation_service.save_conversation("a3ce1e87-3f9b-4f3a-bba5-65877b2e1e39", message, history)
+
                 elif isinstance(event, PartStartEvent) and event.part and isinstance(event.part, TextPart):
                     await websocketManager.send_personal_message(student_context.student_id, event.part.content, type="text")
+                
                 else:
                     await websocketManager.send_personal_message(student_context.student_id, f"Event: {event}", type="thinking")
     except Exception as e:

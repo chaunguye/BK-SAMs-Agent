@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from src.repository.conversation_repo import get_conversation_repo
 from src.cache.cache_manager import get_cache_manager
 import logfire
+from fastapi.encoders import jsonable_encoder
 
 load_dotenv()
 
@@ -26,21 +27,27 @@ class ConversationService:
                 return []
         else:
             logfire.info(f"Cache miss for conversation_id: {conversation_id}. Fetching from database.")
-            conversation = await conversation_repo.get_conversation(conversation_id)
-            await cache.set_cache(conversation_id, conversation)
-            return json.loads(conversation) if conversation else []
-        
-    async def save_conversation(self, conversation_id, conversation_data):
+            records = await conversation_repo.get_conversation(conversation_id)
+            message_history_object = []
+            for rec in records:
+                message_history_object.append(json.loads(rec["raw_message"]))
+
+            await cache.set_cache(conversation_id, json.dumps(jsonable_encoder(message_history_object)))
+            return message_history_object
+                
+    async def save_conversation(self, conversation_id, conversation_data, current_history = None):
         cache = get_cache_manager()
         conversation_repo = await get_conversation_repo()
 
-        history = await self.get_conversation(conversation_id)
-        history.extend(conversation_data)
+        if current_history is None:
+            current_history = await self.get_conversation(conversation_id)
 
-        serialized_history = json.dumps([message.model_dump() if hasattr(message, 'model_dump') else message for message in history])
+        current_history.extend(conversation_data)
 
-        await conversation_repo.save_conversation(conversation_id, serialized_history)
-        await cache.set_cache(conversation_id, serialized_history)
+        serialized_history = jsonable_encoder([message.model_dump(mode='json') if hasattr(message, 'model_dump') else message for message in current_history])
+        # Ensure serialized_history is a JSON string
+        await cache.set_cache(conversation_id, json.dumps(serialized_history))
+        await conversation_repo.save_conversation(conversation_id, conversation_data)
 
 _conversation_service = None
 def get_conversation_service():

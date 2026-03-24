@@ -13,7 +13,7 @@ class CacheManager:
         password=os.getenv('REDIS_PASSWORD'),
         )
 
-    async def set_cache(self, key, value, expire_time=None):
+    async def set_cache(self, key, value, expire_time=600):
         if expire_time:
             await self.redis_client.setex(key, expire_time, value)
         else:
