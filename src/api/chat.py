@@ -11,6 +11,7 @@ from pydantic_ai import (
     PartDeltaEvent,
     TextPartDelta,
     PartEndEvent,
+    PartStartEvent,
     TextPart
 )
 from src.websocket.websocketManager import get_websocket_manager
@@ -66,6 +67,8 @@ async def websocket_endpoint(websocket: WebSocket,
                     await websocketManager.send_personal_message(student_context.student_id, f"Calling tool: {event.part.tool_name} with args: {event.part.args}", type="tool_call")
                 elif isinstance(event, AgentRunResultEvent):
                     await websocketManager.send_personal_message(student_context.student_id, f"Final result: {event}", type="end")
+                elif isinstance(event, PartStartEvent) and event.part and isinstance(event.part, TextPart):
+                    await websocketManager.send_personal_message(student_context.student_id, event.part.content, type="text")
                 else:
                     await websocketManager.send_personal_message(student_context.student_id, f"Event: {event}", type="thinking")
     except Exception as e:
