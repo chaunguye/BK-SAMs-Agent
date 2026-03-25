@@ -14,13 +14,14 @@ from pydantic_ai.models.gemini import GeminiModel
 from pydantic import Field
 from datetime import datetime
 from langfuse import Langfuse
+import uuid
 
 load_dotenv()
 
 @dataclass
 class AgentConfig:
     chunk_service: ChunkService
-    student_id: str
+    student_id: uuid.UUID
     activity_service: ActivityService
 
 primary_model = GroqModel('openai/gpt-oss-120b')

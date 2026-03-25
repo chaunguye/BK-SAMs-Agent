@@ -1,10 +1,11 @@
 from src.database.database_connect import get_db_pool
+import uuid
 
 class ActivityRepository:
     def __init__(self, pool):
         self.pool = pool
 
-    async def register_activity(self, student_id: str, activity_id: str):
+    async def register_activity(self, student_id: uuid.UUID, activity_id: str):
         query = """
             INSERT INTO registrations (student_id, activity_id)
             VALUES ($1, $2) RETURNING id
@@ -12,7 +13,7 @@ class ActivityRepository:
         async with self.pool.acquire() as conn:
             return await conn.execute(query, student_id, activity_id)
     
-    async def unregister_activity(self, student_id: str, activity_id: str):
+    async def unregister_activity(self, student_id: uuid.UUID, activity_id: str):
         query = """
             DELETE FROM registrations
             WHERE student_id = $1 AND activity_id = $2

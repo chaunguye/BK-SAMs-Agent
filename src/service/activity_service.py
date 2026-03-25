@@ -1,7 +1,8 @@
 from src.repository.activity_repo import get_activity_repo
+import uuid
 
 class ActivityService:
-    async def register_activity(self, student_id: str, activity_name: str) -> str:
+    async def register_activity(self, student_id: uuid.UUID, activity_name: str) -> str:
         activity_repo = await get_activity_repo()
         activity = await activity_repo.get_activity_by_name(activity_name)
         if not activity:
@@ -16,7 +17,7 @@ class ActivityService:
         else:
             return f"Registration for {activity_name} was cancelled."
     
-    async def unregister_activity(self, student_id: str, activity_name: str) -> str:
+    async def unregister_activity(self, student_id: uuid.UUID, activity_name: str) -> str:
         activity_repo = await get_activity_repo()
         activity = await activity_repo.get_activity_by_name(activity_name)
         if not activity:
@@ -31,7 +32,7 @@ class ActivityService:
         else:
             return f"Unregistration for {activity_name} was cancelled."
         
-    async def get_confirmation(self, student_id: str, activity_name: str, action: str = "register") -> bool:
+    async def get_confirmation(self, student_id: uuid.UUID, activity_name: str, action: str = "register") -> bool:
         # Placeholder for confirmation logic
         return True  # Assume confirmation is always given for this placeholder implementation
 

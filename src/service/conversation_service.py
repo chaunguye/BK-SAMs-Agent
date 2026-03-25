@@ -16,12 +16,13 @@ class ConversationService:
         conversation_repo = await get_conversation_repo()
 
         with logfire.span("Fetching Conversation From Cache Reddis"):
-            conversation = await cache.get_cache(conversation_id)
+            conversation = await cache.get_cache(str(conversation_id))
             logfire.info(f"Fetching message history from cache for conversation_id: {conversation_id}. Result: {'Found in cache: {conversation}' if conversation else 'Not found in cache'}")
         
         if conversation:
             try:
                 conversation = json.loads(conversation)
+                return conversation
             except json.JSONDecodeError as e:
                 logfire.error(f"Error decoding conversation data from cache for conversation_id: {conversation_id}. Error: {e}")
                 return []
@@ -32,7 +33,7 @@ class ConversationService:
             for rec in records:
                 message_history_object.append(json.loads(rec["raw_message"]))
 
-            await cache.set_cache(conversation_id, json.dumps(jsonable_encoder(message_history_object)))
+            await cache.set_cache(str(conversation_id), json.dumps(jsonable_encoder(message_history_object)))
             return message_history_object
                 
     async def save_conversation(self, conversation_id, conversation_data, current_history = None):
@@ -46,8 +47,16 @@ class ConversationService:
 
         serialized_history = jsonable_encoder([message.model_dump(mode='json') if hasattr(message, 'model_dump') else message for message in current_history])
         # Ensure serialized_history is a JSON string
-        await cache.set_cache(conversation_id, json.dumps(serialized_history))
+        await cache.set_cache(str(conversation_id), json.dumps(serialized_history))
         await conversation_repo.save_conversation(conversation_id, conversation_data)
+
+    async def create_conversation(self, title, user_id):
+        conversation_repo = await get_conversation_repo()
+        return conversation_repo.create_conversation(title, user_id)
+    
+    async def get_conversation_list(self, user_id):
+        conversation_repo = await get_conversation_repo()
+        return conversation_repo.get_conversation_list(user_id)
 
 _conversation_service = None
 def get_conversation_service():

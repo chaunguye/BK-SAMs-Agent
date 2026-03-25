@@ -13,7 +13,7 @@ load_dotenv()
 security = HTTPBearer()
 
 class StudentContext:
-    def __init__(self, student_id: str, student_name: Optional[str] = None):
+    def __init__(self, student_id: uuid.UUID, student_name: Optional[str] = None):
         self.student_id = student_id
         self.student_name = student_name
 

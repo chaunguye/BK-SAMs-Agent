@@ -31,13 +31,32 @@ class ConversationRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, conversation_id)
-    async def create_conversation(self, conversation_id):
+        
+    async def get_conversation_text(self, conversation_id):
+        query = """
+            SELECT * FROM message
+            WHERE conversation_id = $1
+            ORDER BY timestamp ASC
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, conversation_id)
+
+    async def create_conversation(self, title, user_id):
         query = """
             INSERT INTO conversation (tittle, user_id)
             VALUES ($1, $2)
+            RETURNING id;
         """
         async with self.pool.acquire() as conn:
-            return await conn.execute(query, conversation_id)
+            return await conn.fetchval(query, title, user_id)
+        
+    async def get_conversation_list(self, student_id):
+        query = """
+            SELECT id, title 
+            WHERE user_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, student_id)
 
     def _get_role(self, message):
         if isinstance(message, ModelRequest):
