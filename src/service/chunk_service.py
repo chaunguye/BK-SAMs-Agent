@@ -10,7 +10,7 @@ from datetime import datetime
 
 _executor = ThreadPoolExecutor(max_workers=4)  
 
-class DocumentProcessor:
+class ChunkService:
     def __init__(self):
         self._converter = None
         self._chunker = None
@@ -84,9 +84,14 @@ class DocumentProcessor:
             results = await chunkRepo.search_relevant_activity(time_start, name, time_end, location, status, sort_by, desc, top_k)
         return results
     
-_document_processor = None
-def get_document_processor():
-    global _document_processor
-    if _document_processor is None:
-        _document_processor = DocumentProcessor()
-    return _document_processor
+    async def healthy_check(self):
+        return {"converter": self._converter is not None, 
+                "chunker": self._chunker is not None, 
+                "embedder": self._embedder is not None}
+    
+_chunk_service = None
+def get_chunk_service():
+    global _chunk_service
+    if _chunk_service is None:
+        _chunk_service = ChunkService()
+    return _chunk_service
