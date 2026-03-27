@@ -28,10 +28,10 @@ class WebsocketManager:
         for client in self.connection.values():
             await client.send(message)
 
-    async def send_personal_message(self, conversation_id: uuid.UUID, message, type):
+    async def send_personal_message(self, conversation_id: uuid.UUID, message, type, sender_type="AI"):
         websocket = self.connection.get(conversation_id)
         if websocket:
-            payload = {"type": type, "message": message}
+            payload = {"type": type, "message": message, "sender_type": sender_type}
             await websocket.send_json(payload)
 
 _websocket_manager = None

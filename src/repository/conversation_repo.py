@@ -1,5 +1,5 @@
 from src.database.database_connect import get_db_pool
-from pydantic_ai import ModelRequest, ModelResponse, ToolCallPart, TextPart
+from pydantic_ai import ModelRequest, ModelResponse, ToolCallPart, TextPart, UserPromptPart
 import json
 from fastapi.encoders import jsonable_encoder
 
@@ -32,6 +32,15 @@ class ConversationRepository:
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, conversation_id)
         
+    async def get_conversation_content(self, conversation_id):
+        query = """
+            SELECT text_content, sender_type FROM message 
+            WHERE conversation_id = $1 AND text_content IS NOT NULL
+            ORDER BY timestamp ASC
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, conversation_id)
+        
     async def get_conversation_text(self, conversation_id):
         query = """
             SELECT * FROM message
@@ -43,7 +52,7 @@ class ConversationRepository:
 
     async def create_conversation(self, title, user_id):
         query = """
-            INSERT INTO conversation (tittle, user_id)
+            INSERT INTO conversation (title, user_id)
             VALUES ($1, $2)
             RETURNING id;
         """
@@ -53,6 +62,7 @@ class ConversationRepository:
     async def get_conversation_list(self, student_id):
         query = """
             SELECT id, title 
+            FROM conversation
             WHERE user_id = $1
         """
         async with self.pool.acquire() as conn:
@@ -74,6 +84,8 @@ class ConversationRepository:
             elif isinstance(part, ToolCallPart):
                 # We might want to store that a tool was called in the content
                 texts.append(f"[Tool Call: {part.tool_name}]")
+            elif isinstance(part, UserPromptPart):
+                texts.append(part.content)
         return "\n".join(texts)
 
     
