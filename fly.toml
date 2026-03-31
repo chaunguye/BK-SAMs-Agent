@@ -17,6 +17,13 @@ primary_region = 'ams'
   processes = ['app']
   health_checks_grace_period = "60s"
 
+[[http_service.checks]]
+  grace_period = "60s"
+  interval = "15s"
+  method = "get"
+  path = "/health"
+  timeout = "10s"
+
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
