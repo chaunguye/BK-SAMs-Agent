@@ -1,3 +1,5 @@
+import json
+
 from src.cache.cache_manager import get_cache_manager
 from fastapi import APIRouter, WebSocket, Depends, HTTPException
 from src.util.chat_request import ChatRequest
@@ -13,7 +15,9 @@ from pydantic_ai import (
     TextPartDelta,
     PartEndEvent,
     PartStartEvent,
-    TextPart
+    TextPart,
+    DeferredToolRequests,
+    DeferredToolResults
 )
 from src.websocket.websocketManager import get_websocket_manager
 import asyncio
@@ -71,6 +75,7 @@ async def websocket_endpoint(websocket: WebSocket,
 
     if conversation_id is None and student_context is not None:
         title = f"{datetime.datetime.now()}"
+        logfire.info(f"Creating new conversation for student_id: {student_context.student_id} with title: {title}")
         conversation_id = await conversation_service.create_conversation(title, student_context.student_id)
     elif conversation_id is None and student_context is None:
         conversation_id = uuid.uuid4()
@@ -84,13 +89,20 @@ async def websocket_endpoint(websocket: WebSocket,
 
     # if conversation ID => Send history message.
     if load_history:
-        prev_chat = conversation_service.load_history(conversation_id)
-        [websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type']) for chat in prev_chat] 
+        prev_chat = await conversation_service.load_history(conversation_id)
+        logfire.info(f"Load previous chat history for conversation_id {conversation_id}")
+        # [websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type']) for chat in prev_chat] 
+        for chat in prev_chat:
+            await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type'])
     
     try:
         while True:
             try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=600.0)
+                raw_data = await asyncio.wait_for(websocket.receive_json(), timeout=600.0)
+                data = raw_data.get("message", "")
+                # List of approval response 
+                approval_response = raw_data.get("approval_response", None)
+
             except asyncio.TimeoutError:
                 print(f"Websocket connection with conversation ID: {conversation_id} timed out.")
                 await websocket.close()
@@ -103,10 +115,17 @@ async def websocket_endpoint(websocket: WebSocket,
                     if history[0] is not None:
                         logfire.info(f"Type of each element: {type(history[0])}")
                 logfire.info(f"Student Context: {student_context}")
+
+            approval_result = None
+            if approval_response:
+                approval_result = DeferredToolResults()
+                for approval in approval_response:
+                    approval_result.approvals[approval['tool_call_id']] = approval['confirm']
             
-            deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id if student_context else None)
             
-            async for event in capstone_agent.run_stream_events(data, deps=deps,message_history=history):
+            deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id if student_context else None, student_name=student_context.student_name if student_context else None)
+            
+            async for event in capstone_agent.run_stream_events(data, deps=deps,message_history=history, deferred_tool_results=approval_result):
                 # print(f"Type: {type(PartDeltaEvent).__name__}")
                 # print(f"Attributes: {dir(PartDeltaEvent)}")
                 if isinstance(event, PartDeltaEvent) and event.delta and isinstance(event.delta, TextPartDelta):
@@ -119,7 +138,16 @@ async def websocket_endpoint(websocket: WebSocket,
                     await websocketManager.send_personal_message(conversation_id, f"Calling tool: {event.part.tool_name} with args: {event.part.args}", type="tool_call")
                 
                 elif isinstance(event, AgentRunResultEvent):
-                    await websocketManager.send_personal_message(conversation_id, f"Final result: {event}", type="end")
+                    if isinstance(event.result.output, DeferredToolRequests):
+                        for approval in event.result.output.approvals:
+                            # await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: {approval.args['name']}\nStatus: {approval.args['status']}\nLocation: {approval.args['location']}\nStart Time: {approval.args['start_time']}\nEnd Time: {approval.args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
+                            args = approval.args
+                            if isinstance(args, str):
+                                args = json.loads(args)
+                            await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: \n{args['name']}\nStatus: {args['status']}\nLocation: {args['location']}\nStart Time: {args['start_time']}\nEnd Time: {args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
+                        
+                    else:
+                        await websocketManager.send_personal_message(conversation_id, f"Final result: {event}", type="end")
 
                     message = event.result.new_messages()
                     if student_context:

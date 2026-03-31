@@ -67,7 +67,7 @@ class ConversationService:
         return await conversation_repo.get_conversation_list(user_id)
     
     async def load_history(self, conversation_id):
-        conversation_repo = get_conversation_repo()
+        conversation_repo = await get_conversation_repo()
         return await conversation_repo.get_conversation_content(conversation_id)
 
 _conversation_service = None

@@ -24,8 +24,11 @@ class ActivityRepository:
 
     async def get_activity_by_name(self, activity_name: str):
         query = """
-            SELECT * FROM activity
-            WHERE name = $1
+            SELECT id, name, location, status, description, start_time, end_time, similarity(name::text, $1) as score
+            FROM activity
+            WHERE name % $1
+            ORDER BY score DESC
+            LIMIT 1
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_name)
