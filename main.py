@@ -22,9 +22,7 @@ def read_root():
 
 @app.get("/health")
 async def health_check():
-    chunk_service = get_chunk_service()
-    health_status = await chunk_service.healthy_check()
-    return JSONResponse(health_status)
+    return {"status": "ok"}
 
 
 
