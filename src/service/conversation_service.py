@@ -16,8 +16,10 @@ class ConversationService:
     def __init__(self):
         self.messages_adapter = TypeAdapter(list[ModelMessage])
     async def get_conversation(self, conversation_id):
-        cache = get_cache_manager()
-        conversation_repo = await get_conversation_repo()
+        with logfire.span("Get cache mananger instance"):
+            cache = get_cache_manager()
+        with logfire.span("Get conversation repo instance"):
+            conversation_repo = await get_conversation_repo()
 
         with logfire.span("Fetching Conversation From Cache Reddis"):
             conversation = await cache.get_cache(str(conversation_id))

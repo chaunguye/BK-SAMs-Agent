@@ -36,7 +36,7 @@ async def chat_with_agent(request: ChatRequest,
                           student_context: StudentContext = Depends(get_student_context)):
     """This endpoint is used to send a message to the agent and get a response."""
 
-    deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id if student_context else None)
+    deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id if student_context else None, student_name=student_context.student_name if student_context else None)
     response = await capstone_agent.run(request.message, deps=deps)
     return JSONResponse({"response": response.output})
 
