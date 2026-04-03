@@ -57,6 +57,20 @@ class ChunkRepository:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(query, time_start, name, time_end, location, status, top_k)
         return [dict(row) for row in rows]
+    
+    async def search_chunks_of_activity(self, query_embedding, activity_id, top_k=5):
+        query = """
+            SELECT id, text_content, embeddings <=> $1::vector AS distance
+            FROM chunk
+            WHERE document_id IN (
+                SELECT id FROM document WHERE activity_id = $2
+            )
+            ORDER BY embeddings <=> $1::vector
+            LIMIT $3
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, query_embedding, str(activity_id), top_k)
+        return [dict(row) for row in rows]
 
 _chunk_repo = None
 async def get_chunk_repo():

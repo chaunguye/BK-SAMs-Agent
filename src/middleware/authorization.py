@@ -1,20 +1,25 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import os
 from typing import Optional
 import uuid
 from fastapi import Header
 from dotenv import load_dotenv
 import jwt
+import logfire
 
 load_dotenv()
 
+security = HTTPBearer()
+
 class StudentContext:
-    def __init__(self, student_id: str, student_name: Optional[str] = None):
+    def __init__(self, student_id: uuid.UUID, student_name: Optional[str] = None):
         self.student_id = student_id
         self.student_name = student_name
 
-async def get_student_context(authorization: Optional[str] = Header(None)):
+async def get_student_context(authorization: Optional[str] = Header(None, alias="Authorization")) -> Optional[StudentContext]:
     if authorization is None:
+        logfire.info("No Authorization header provided. Returning None for student context.")
         return None
     try:
         scheme, token = authorization.split()
@@ -32,12 +37,8 @@ async def get_student_context(authorization: Optional[str] = Header(None)):
     except (jwt.PyJWTError, ValueError):
         return None
 
-def verify_jwt (authorization: Optional[str] = Header(None)) -> Optional[StudentContext]:
-    if authorization is None:
-        raise HTTPException(status_code=401, detail="Authorization header missing. Please log in.")
-    scheme, token = authorization.split()
-    if scheme.lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Invalid authorization scheme. Please use Bearer token.")
+def verify_jwt (credentials: HTTPAuthorizationCredentials = Depends(security)) -> Optional[StudentContext]:
+    token = credentials.credentials
     try:
         payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
         student_id = payload.get("sub")
@@ -47,3 +48,4 @@ def verify_jwt (authorization: Optional[str] = Header(None)) -> Optional[Student
         return StudentContext(student_id=student_id, student_name=student_name)
     except (jwt.PyJWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token. Please try in again.")
+
