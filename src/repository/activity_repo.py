@@ -32,6 +32,16 @@ class ActivityRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_name)
+    
+    async def get_activity_details(self, activity_id: uuid.UUID):
+        query = """
+            SELECT a.id, a.name, a.location, a.status, a.description, a.start_time, a.end_time, a.max_slots, a.number_of_conversion_day, f.falculty_name
+            FROM activity a 
+            LEFT JOIN faculty f ON a.faculty_id = f.id
+            WHERE a.id = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(query, activity_id)
 
 _activity_repo = None
 async def get_activity_repo():

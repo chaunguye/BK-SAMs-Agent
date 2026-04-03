@@ -17,7 +17,10 @@ class ActivityService:
         activity_repo = await get_activity_repo()
         return await activity_repo.get_activity_by_name(activity_name)
         
-        
+    async def get_activity_details(self, activity_id: uuid.UUID):
+        activity_repo = await get_activity_repo()
+        return await activity_repo.get_activity_details(activity_id)
+    
 _activity_service = None
 def get_activity_service():
     global _activity_service

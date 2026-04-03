@@ -77,6 +77,18 @@ class ChunkService:
         with logfire.span("Searching Chunks in Database"):
             results = await chunkRepo.search_chunks_by_embedding(query_embedding_str, top_k)
         return results
+    
+    async def search_chunks_of_activity(self, query: str, top_k: int, activity_id: uuid.UUID):
+        loop = asyncio.get_running_loop()
+        
+        with logfire.span("Embedding Search Query for Activity Chunks"):
+            query_embedding = await loop.run_in_executor(_executor, self.embedder.encode, [query])
+        query_embedding_str = "[" + ",".join(str(x) for x in query_embedding[0]) + "]"
+
+        chunkRepo = await get_chunk_repo()
+        with logfire.span("Searching Activity Chunks in Database"):
+            results = await chunkRepo.search_chunks_of_activity(query_embedding_str, activity_id, top_k)
+        return results
 
     async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
         chunkRepo = await get_chunk_repo()
