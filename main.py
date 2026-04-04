@@ -5,8 +5,10 @@ from src.service.chunk_service import get_chunk_service
 from src.repository.chunk_repo import get_chunk_repo
 import logfire
 from src.api import chat, rag
+from src.database.database_connect import get_db_pool
 
 
+import asyncio
 
 app = FastAPI()
 app.include_router(rag.router)
@@ -15,6 +17,15 @@ app.include_router(chat.router)
 logfire.configure()
 logfire.instrument_pydantic_ai()
 logfire.instrument_fastapi(app)
+
+# Background preload of DB pool at startup
+@app.on_event("startup")
+async def preload_db_pool():
+    try:
+        await get_db_pool()
+        print("[Startup] Database pool preloaded.")
+    except Exception as e:
+        print(f"[Warning] DB pool preload failed: {e}")
 
 @app.get("/")
 def read_root():

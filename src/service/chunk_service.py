@@ -8,7 +8,20 @@ from src.repository.chunk_repo import get_chunk_repo
 import logfire
 from datetime import datetime
 
-_executor = ThreadPoolExecutor(max_workers=4)  
+
+import threading
+
+_executor = ThreadPoolExecutor(max_workers=4)
+
+# Background preloading of SentenceTransformer model
+def _preload_embedder():
+    try:
+        SentenceTransformer("all-MiniLM-L6-v2")
+    except Exception as e:
+        print(f"[Warning] Failed to preload embedder: {e}")
+
+_preload_thread = threading.Thread(target=_preload_embedder, daemon=True)
+_preload_thread.start()
 
 class ChunkService:
     def __init__(self):
@@ -88,12 +101,6 @@ class ChunkService:
         chunkRepo = await get_chunk_repo()
         with logfire.span("Searching Activity Chunks in Database"):
             results = await chunkRepo.search_chunks_of_activity(query_embedding_str, activity_id, top_k)
-        return results
-
-    async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
-        chunkRepo = await get_chunk_repo()
-        with logfire.span("Searching Relevant Activities"):
-            results = await chunkRepo.search_relevant_activity(time_start, name, time_end, location, status, sort_by, desc, top_k)
         return results
     
     async def healthy_check(self):

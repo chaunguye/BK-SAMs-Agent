@@ -81,7 +81,7 @@ async def websocket_endpoint(websocket: WebSocket,
         conversation_id = uuid.uuid4()
     elif conversation_id is not None and student_context is None:
         logfire.warning(f"Guess try to access to conversation: {conversation_id}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Access Denied")
+        await websocket.close(code=1008, reason="Access Denied")
     elif conversation_id is not None and student_context is not None:
         load_history = True
 

@@ -43,7 +43,10 @@ def system_prompt() -> str:
 
 @capstone_agent.instructions
 def add_user_name(ctx: RunContext[AgentConfig]) -> str:
-    return f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else "The student's name is not provided."
+    context = ""
+    if ctx.deps and ctx.deps.student_id:
+        context += "This is an authenticated student."
+    return context + f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else context + "The student's name is not provided."
 
 @capstone_agent.instructions
 def add_current_time() -> str:
@@ -67,6 +70,24 @@ async def search_chunks(ctx: RunContext[AgentConfig],
     return 'Relevant chunks: ' + ','.join([chunk['text_content'] for chunk in relevant_chunks])
 
 
+@capstone_agent.tool
+async def search_activity_chunks(ctx: RunContext[AgentConfig],
+                        query: str = Field (..., description="The student's query about activities or events. Extract the core technical query for searching relevant chunks in the database."),
+                        top_k: int = Field(default=5, description="The number of top relevant chunks to return."),
+                        activity_id: uuid.UUID = Field(..., description="The ID of the activity for which to search chunks.")) -> str:
+    """
+    Search for relevant activity chunks in the database based on the query.
+    """
+
+    if ctx.deps and ctx.deps.chunk_service:
+        chunk_service = ctx.deps.chunk_service
+    else:
+        chunk_service = get_chunk_service()
+    with logfire.span("Searching Activity Chunks with query: {}".format(query)):
+        relevant_chunks = await chunk_service.search_chunks_of_activity(query, top_k, activity_id)
+        logfire.info(f"Found {len(relevant_chunks)} relevant activity chunks: {relevant_chunks}")
+    return 'Relevant activity chunks: ' + ','.join([chunk['text_content'] for chunk in relevant_chunks])
+
 ActivityStatus = Literal['OPEN', 'CLOSED', 'COMPLETED', 'CANCELLED']
 @capstone_agent.tool
 async def search_relevant_activities(ctx: RunContext[AgentConfig], 
@@ -78,18 +99,28 @@ async def search_relevant_activities(ctx: RunContext[AgentConfig],
     """
     Search for relevant activities based on activity name, time range, location, and status.
     """
-    if ctx.deps and ctx.deps.chunk_service:
-        chunk_service = ctx.deps.chunk_service
+    if ctx.deps and ctx.deps.activity_service:
+        activity_service = ctx.deps.activity_service
     else:
-        chunk_service = get_chunk_service()
+        activity_service = get_activity_service()
 
     with logfire.span("Searching Relevant Activities with parameters: time_start={}, name={}, time_end={}, location={}, status={}".format(time_start, name, time_end, location, status)):
-        relevant_activities = await chunk_service.search_relevant_activity(time_start=time_start, name=name, time_end=time_end, location=location, status=status, top_k=5)
+        relevant_activities = await activity_service.search_relevant_activity(time_start=time_start, name=name, time_end=time_end, location=location, status=status, top_k=5)
         logfire.info(f"Search parameters - time_start: {time_start}, name: {name}, time_end: {time_end}, location: {location}, status: {status}")
         logfire.info(f"Found {len(relevant_activities)} relevant activities: {relevant_activities}")
         if len(relevant_activities) == 0:
             return "No relevant activities found based on the provided parameters."
     return relevant_activities
+
+@capstone_agent.tool
+async def get_activity_details(ctx: RunContext[AgentConfig], activity_id: uuid.UUID = Field(..., description="The ID of the activity to retrieve details for")) -> str:
+    """
+    Get the activity details based on the activity ID.
+    """
+    activity_details = await ctx.deps.activity_service.get_activity_details(activity_id)
+    logfire.info(f"Getting details for activity_id: {activity_id}, Activity details: {activity_details}")
+    serializable_details = dict(activity_details) if activity_details else None
+    return json.dumps(serializable_details, default=str) if activity_details else "No activity found with the given ID."
 
 @capstone_agent.tool(requires_approval=True)
 async def register_activity(ctx: RunContext[AgentConfig], 
@@ -99,7 +130,6 @@ async def register_activity(ctx: RunContext[AgentConfig],
     Current logic:
     1. Check for activity_id in chat history (Case user ask for activity then register)
     2. If not found, search for activity_id based on activity_name, then register.
-    In case search for activity based on activity_name, pass a list of ids.
     """
     if not ctx.deps.student_id:
         return "Student ID is missing. Unable to register for the activity."
@@ -135,6 +165,23 @@ async def unregister_activity(ctx: RunContext[AgentConfig],
         result = await ctx.deps.activity_service.unregister_activity(student_id=ctx.deps.student_id, activity_id=activity_id)
         logfire.info(f"Unregistering student_id: {ctx.deps.student_id} from activity: {activity_id} with result: {result}")
     return result
+
+@capstone_agent.tool
+async def get_registered_activities(ctx: RunContext[AgentConfig]) -> str:
+    """
+    Get the list of activities the student is currently registered for.
+    """
+    if not ctx.deps.student_id:  
+        return "Student ID is missing. Unable to retrieve registered activities."
+    with logfire.span("Getting registered activities for student_id: {}".format(ctx.deps.student_id)):
+        registered_activities = await ctx.deps.activity_service.get_registered_activities(student_id=ctx.deps.student_id)
+        logfire.info(f"Registered activities for student_id: {ctx.deps.student_id}: {registered_activities}")
+    
+    serializable_activities = [dict(activity) for activity in registered_activities] if registered_activities else []
+    for activity in serializable_activities:
+        if 'id' in activity:
+            activity['id'] = str(activity['id'])
+    return json.dumps(serializable_activities, default=str) if registered_activities else "No registered activities found for the student."
 
 capstone_agent.model = primary_model
 
