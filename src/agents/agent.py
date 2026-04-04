@@ -1,6 +1,8 @@
+import json
+
 from typing_extensions import Literal
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, RunContext, DeferredToolRequests
 import logfire
 import os
 from dotenv import load_dotenv
@@ -14,26 +16,38 @@ from pydantic_ai.models.gemini import GeminiModel
 from pydantic import Field
 from datetime import datetime
 from langfuse import Langfuse
+import uuid
+from typing import List
+from src.util.chat_request import ActivityDetails
 
 load_dotenv()
 
 @dataclass
 class AgentConfig:
     chunk_service: ChunkService
-    student_id: str
+    student_id: uuid.UUID
     activity_service: ActivityService
+    student_name: str
 
 primary_model = GroqModel('openai/gpt-oss-120b')
 secondary_model = GroqModel('qwen/qwen3-32b')
 fallback_model = FallbackModel(primary_model, secondary_model)
 
-capstone_agent = Agent(fallback_model, deps_type = AgentConfig)
+capstone_agent = Agent(fallback_model, deps_type = AgentConfig, output_type=[str, DeferredToolRequests])
 
 @capstone_agent.instructions
 def system_prompt() -> str:
     langfuse = Langfuse()
     prompt = langfuse.get_prompt("capstone/prod")
     return prompt.compile()
+
+@capstone_agent.instructions
+def add_user_name(ctx: RunContext[AgentConfig]) -> str:
+    return f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else "The student's name is not provided."
+
+@capstone_agent.instructions
+def add_current_time() -> str:
+    return f"The current date and time is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
 
 @capstone_agent.tool
 async def search_chunks(ctx: RunContext[AgentConfig],
@@ -77,30 +91,49 @@ async def search_relevant_activities(ctx: RunContext[AgentConfig],
             return "No relevant activities found based on the provided parameters."
     return relevant_activities
 
-@capstone_agent.tool
+@capstone_agent.tool(requires_approval=True)
 async def register_activity(ctx: RunContext[AgentConfig], 
-                            activity_name: str = Field(..., description="The name of the activity the student wants to register for")) -> str:
+                            activity_details: ActivityDetails = Field(..., description="The details of the activity the student wants to register for, obtained from the tool search_activity_by_name")) -> str:
     """
     Register the student for the specified activity.
+    Current logic:
+    1. Check for activity_id in chat history (Case user ask for activity then register)
+    2. If not found, search for activity_id based on activity_name, then register.
+    In case search for activity based on activity_name, pass a list of ids.
     """
     if not ctx.deps.student_id:
         return "Student ID is missing. Unable to register for the activity."
-    with logfire.span("Registering for activity: {}".format(activity_name)):
-        result = await ctx.deps.activity_service.register_activity(student_id=ctx.deps.student_id, activity_name=activity_name)
-        logfire.info(f"Registering student_id: {ctx.deps.student_id} for activity: {activity_name} with result: {result}")
+    with logfire.span("Registering for activity: {}".format(activity_details.id)):
+        result = await ctx.deps.activity_service.register_activity(student_id=ctx.deps.student_id, activity_id=activity_details.id)
+        logfire.info(f"Registering student_id: {ctx.deps.student_id} for activity: {activity_details.id} with result: {result}")
     return result
 
 @capstone_agent.tool
+async def get_activity_id_by_name(ctx: RunContext[AgentConfig], activity_name: str = Field(..., description="The name of the activity to search for its ID")) -> str:
+    """
+    Get the activity ID based on the activity name.
+    """
+    activity_service = get_activity_service()
+    with logfire.span("Getting activity ID for activity name: {}".format(activity_name)):
+        activity_details = await activity_service.search_activity_by_name(activity_name)
+        logfire.info(f"Activity name: {activity_name}, Activity ID: {activity_details['id'] if activity_details else 'Not Found'}")
+    
+    serializable_details = dict(activity_details) if activity_details else None
+    if serializable_details and 'id' in serializable_details:
+        serializable_details['id'] = str(serializable_details['id'])
+    return json.dumps(serializable_details, default=str) if activity_details else "No activity found with the given name."
+
+@capstone_agent.tool
 async def unregister_activity(ctx: RunContext[AgentConfig], 
-                              activity_name: str = Field(..., description="The name of the activity the student wants to unregister from")) -> str:
+                              activity_id: uuid.UUID = Field(..., description="The ID of the activity the student wants to unregister from")) -> str:
     """
     Unregister the student from the specified activity.
     """
     if not ctx.deps.student_id:  
         return "Student ID is missing. Unable to unregister from the activity."
-    with logfire.span("Unregistering from activity: {}".format(activity_name)):
-        result = await ctx.deps.activity_service.unregister_activity(student_id=ctx.deps.student_id, activity_name=activity_name)
-        logfire.info(f"Unregistering student_id: {ctx.deps.student_id} from activity: {activity_name} with result: {result}")
+    with logfire.span("Unregistering from activity: {}".format(activity_id)):
+        result = await ctx.deps.activity_service.unregister_activity(student_id=ctx.deps.student_id, activity_id=activity_id)
+        logfire.info(f"Unregistering student_id: {ctx.deps.student_id} from activity: {activity_id} with result: {result}")
     return result
 
 capstone_agent.model = primary_model

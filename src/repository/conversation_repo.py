@@ -1,29 +1,93 @@
 from src.database.database_connect import get_db_pool
+from pydantic_ai import ModelRequest, ModelResponse, ToolCallPart, TextPart, UserPromptPart
+import json
+from fastapi.encoders import jsonable_encoder
 
 class ConversationRepository:
     def __init__(self, pool):
         self.pool = pool
 
-    def save_conversation(self, conversation_id, conversation_data):
+    async def save_conversation(self, conversation_id, conversation_data):
         query = """
-            INSERT INTO message (sender_type, text_content, conversation_id)
-            VALUES ($1, $2, $3)
+            INSERT INTO message (sender_type, text_content, conversation_id, raw_message)
+            VALUES ($1, $2, $3, $4)
         """
-        return self.pool.execute(query, conversation_data['sender_type'], conversation_data['text_content'], conversation_id)
+        data_to_insert = []
+        for data in conversation_data:
+            sender_type = self._get_role(data)
+            text_content = self._extract_content(data)
+            # metadata = data.model_dump_json() if hasattr(data, 'model_dump_json') else jsonable_encoder(data)
+            metadata = jsonable_encoder(data.model_dump(mode='json') if hasattr(data, 'model_dump') else data)
+            data_to_insert.append((sender_type, text_content, conversation_id, json.dumps(metadata)))
+            
+        async with self.pool.acquire() as conn:
+            return await conn.executemany(query, data_to_insert)
 
-    def get_conversation(self, conversation_id):
+    async def get_conversation(self, conversation_id):
+        query = """
+            SELECT raw_message FROM message
+            WHERE conversation_id = $1
+            ORDER BY timestamp ASC
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, conversation_id)
+        
+    async def get_conversation_content(self, conversation_id):
+        query = """
+            SELECT text_content, sender_type FROM message 
+            WHERE conversation_id = $1 AND text_content IS NOT NULL
+            ORDER BY timestamp ASC
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, conversation_id)
+        
+    async def get_conversation_text(self, conversation_id):
         query = """
             SELECT * FROM message
             WHERE conversation_id = $1
             ORDER BY timestamp ASC
         """
-        return self.pool.fetch(query, conversation_id)
-    def create_conversation(self, conversation_id):
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, conversation_id)
+
+    async def create_conversation(self, title, user_id):
         query = """
-            INSERT INTO conversation (tittle, user_id)
+            INSERT INTO conversation (title, user_id)
             VALUES ($1, $2)
+            RETURNING id;
         """
-        return self.pool.execute(query, conversation_id)
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(query, title, user_id)
+        
+    async def get_conversation_list(self, student_id):
+        query = """
+            SELECT id, title 
+            FROM conversation
+            WHERE user_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, student_id)
+
+    def _get_role(self, message):
+        if isinstance(message, ModelRequest):
+            return "client"
+        elif isinstance(message, ModelResponse):
+            return "AI"
+        else:
+            return "unknown"
+    
+    def _extract_content(self, message) -> str:
+        texts = []  
+        for part in message.parts:
+            if isinstance(part, TextPart):
+                texts.append(part.content)
+            elif isinstance(part, ToolCallPart):
+                # We might want to store that a tool was called in the content
+                texts.append(f"[Tool Call: {part.tool_name}]")
+            elif isinstance(part, UserPromptPart):
+                texts.append(part.content)
+        return "\n".join(texts)
+
     
 
 _conversation_repo = None
