@@ -9,12 +9,15 @@ import logfire
 from fastapi.encoders import jsonable_encoder
 from pydantic_ai.messages import ModelMessage
 from pydantic import TypeAdapter
+from src.util.filter_history import summarize_conversation
 
 load_dotenv()
 
 class ConversationService:
     def __init__(self):
         self.messages_adapter = TypeAdapter(list[ModelMessage])
+        self.latest = 5
+        self.max_history = 10
     async def get_conversation(self, conversation_id):
         with logfire.span("Get cache mananger instance"):
             cache = get_cache_manager()
@@ -34,8 +37,13 @@ class ConversationService:
                 return []
         else:
             logfire.info(f"Cache miss for conversation_id: {conversation_id}. Fetching from database.")
-            records = await conversation_repo.get_conversation(conversation_id)
+            records = await conversation_repo.get_conversation(conversation_id)['raw_message']
+            logfire.info(f"Fetched {len(records)} messages from database for conversation_id: {conversation_id}. Records: {records}")
+
+            summary = await conversation_repo.get_conversation_summary(conversation_id)
+            logfire.info(f"Fetched conversation summary from database for conversation_id: {conversation_id}. Summary: {summary}")
             message_history_object = []
+            message_history_object.append(json.load(summary))
             for rec in records:
                 message_history_object.append(json.loads(rec["raw_message"]))
 
@@ -49,17 +57,38 @@ class ConversationService:
 
         conversation_repo = await get_conversation_repo()
 
+        if student_id:
+            await conversation_repo.save_conversation(conversation_id, conversation_data)
+
+        un_summarized_messages = await conversation_repo.get_conversation(conversation_id)
+    
+        if len(un_summarized_messages) > self.max_history:
+            with logfire.span("Summarizing conversation history for conversation_id: {}".format(conversation_id)):
+                summary, recent = await summarize_conversation([json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
+                logfire.info(f"Summary result for conversation_id: {conversation_id}: {summary}")
+
+                await conversation_repo.update_conversation_summary(conversation_id, summary)
+                logfire.info(f"Updated conversation summary in database for conversation_id: {conversation_id}")
+                update_ids = [message['id'] for message in un_summarized_messages[:-self.latest]]
+                # Mark the old messages as summarized in the database
+                await conversation_repo.mark_messages_as_summarized(conversation_id, update_ids)
+                logfire.info(f"Marking {len(update_ids)} messages as summarized for conversation_id: {conversation_id}. Message IDs: {update_ids}")
+            
+            serialized_history = jsonable_encoder([message.model_dump(mode='json') if hasattr(message, 'model_dump') else message for message in summary + recent])
+            await cache.set_cache(str(conversation_id), json.dumps(serialized_history))
+
+
         if current_history is None:
-            current_history = await self.get_conversation(conversation_id)
+            current_history = await self.get_conversation_summary(conversation_id)
+            current_history += await self.get_conversation(conversation_id)['raw_message']
 
         current_history.extend(conversation_data)
+            
 
         serialized_history = jsonable_encoder([message.model_dump(mode='json') if hasattr(message, 'model_dump') else message for message in current_history])
         # Ensure serialized_history is a JSON string
         await cache.set_cache(str(conversation_id), json.dumps(serialized_history))
-        if student_id:
-            await conversation_repo.save_conversation(conversation_id, conversation_data)
-
+        
     async def create_conversation(self, title, user_id):
         conversation_repo = await get_conversation_repo()
         return await conversation_repo.create_conversation(title, user_id)

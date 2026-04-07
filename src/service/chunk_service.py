@@ -1,12 +1,14 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from docling.document_converter import DocumentConverter
 from chonkie import RecursiveChunker
 from sentence_transformers import SentenceTransformer
 import uuid
 from src.repository.chunk_repo import get_chunk_repo
 import logfire
 from datetime import datetime
+from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+
 
 
 import threading
@@ -23,6 +25,13 @@ def _preload_embedder():
 _preload_thread = threading.Thread(target=_preload_embedder, daemon=True)
 _preload_thread.start()
 
+
+pipeline_options = PdfPipelineOptions()
+# Disable OCR (only works if PDFs are digital, not scanned)
+pipeline_options.do_ocr = False 
+# Use a faster, simpler table model
+pipeline_options.do_table_structure = False
+
 class ChunkService:
     def __init__(self):
         self._converter = None
@@ -32,7 +41,13 @@ class ChunkService:
     @property
     def converter(self) -> DocumentConverter:
         if self._converter is None:
-            self._converter = DocumentConverter()
+            self._converter = DocumentConverter(
+                format_options={
+                InputFormat.PDF: PdfFormatOption(
+                    pipeline_options=pipeline_options
+                )
+            }
+            )
         return self._converter
 
     @property

@@ -2,6 +2,7 @@ from src.database.database_connect import get_db_pool
 from pydantic_ai import ModelRequest, ModelResponse, ToolCallPart, TextPart, UserPromptPart
 import json
 from fastapi.encoders import jsonable_encoder
+from datetime import datetime
 
 class ConversationRepository:
     def __init__(self, pool):
@@ -25,26 +26,52 @@ class ConversationRepository:
 
     async def get_conversation(self, conversation_id):
         query = """
-            SELECT raw_message FROM message
-            WHERE conversation_id = $1
+            SELECT id, raw_message FROM message
+            WHERE conversation_id = $1 AND summarized = FALSE
             ORDER BY timestamp ASC
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, conversation_id)
+        
+    async def get_conversation_summary(self, conversation_id):
+        query = """
+            SELECT summary FROM convesation
+            WHERE conversation_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetch(query, conversation_id) 
+        
+    async def update_conversation_summary(self, conversation_id, summary):
+        query = """
+            UPDATE conversation
+            SET summary = $1
+            WHERE id = $2
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.execute(query, summary, conversation_id)
+        
+    async def mark_messages_as_summarized(self, conversation_id, message_ids = None):
+        if message_ids is None:
+            query = """
+                UPDATE message
+                SET summarized = TRUE
+                WHERE conversation_id = $1 AND summarized = FALSE
+            """
+            async with self.pool.acquire() as conn:
+                return await conn.execute(query, conversation_id)
+        else:
+            query = """
+                UPDATE message
+                SET summarized = TRUE
+                WHERE id = ANY($1::int[])
+            """
+            async with self.pool.acquire() as conn:
+                return await conn.execute(query, message_ids)
         
     async def get_conversation_content(self, conversation_id):
         query = """
             SELECT text_content, sender_type FROM message 
             WHERE conversation_id = $1 AND text_content IS NOT NULL
-            ORDER BY timestamp ASC
-        """
-        async with self.pool.acquire() as conn:
-            return await conn.fetch(query, conversation_id)
-        
-    async def get_conversation_text(self, conversation_id):
-        query = """
-            SELECT * FROM message
-            WHERE conversation_id = $1
             ORDER BY timestamp ASC
         """
         async with self.pool.acquire() as conn:
