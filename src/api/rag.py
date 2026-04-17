@@ -14,7 +14,8 @@ router = APIRouter(prefix="/upload", tags=["RAG Document Upload"])
 
 @router.post("")
 async def upload_document(file: UploadFile, background_tasks: BackgroundTasks, 
-                          student_context: StudentContext = Depends(verify_jwt)):
+                          student_context: StudentContext = Depends(verify_jwt),
+                          activity_id: str = None):
     
     if student_context is None:
         raise HTTPException(status_code=401, detail="Unauthorized. Guest cannot upload documents.")
@@ -33,7 +34,7 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
 
     # Insert document to database
     chunkRepo = await get_chunk_repo()
-    await chunkRepo.insert_document(doc_id, file_path, suffix, "anonymous", file.filename)
+    await chunkRepo.insert_document(doc_id, file_path, suffix, student_context.student_name, file.filename, activity_id)
 
     # Process document in background (Parsing, chunking, embedding, storing chunks)
     

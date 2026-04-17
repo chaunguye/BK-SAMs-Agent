@@ -115,7 +115,8 @@ class ChunkService:
 
         chunkRepo = await get_chunk_repo()
         with logfire.span("Searching Activity Chunks in Database"):
-            results = await chunkRepo.search_chunks_of_activity(query_embedding_str, activity_id, top_k)
+            # results = await chunkRepo.search_chunks_of_activity(query_embedding_str, activity_id, top_k)
+            results = await chunkRepo.search_chunks_of_activity_hybrid(query_embedding_str, query, activity_id, top_k)
         return results
     
     async def healthy_check(self):

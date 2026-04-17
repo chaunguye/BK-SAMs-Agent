@@ -51,7 +51,7 @@ async def test_query(query: str):
 async def get_conversation(student_context: StudentContext = Depends(get_student_context)):
     """This endpoint returns a list of conversation of a user based on user ID"""
     if student_context is None:
-        return JSONResponse({"user_type": "guess", "conversation": []})
+        return JSONResponse({"user_type": "guest", "conversation": []})
     converation_service = get_conversation_service()
     conversation_list = await converation_service.get_conversation_list(student_context.student_id)
     list_json = [
@@ -80,7 +80,7 @@ async def websocket_endpoint(websocket: WebSocket,
     elif conversation_id is None and student_context is None:
         conversation_id = uuid.uuid4()
     elif conversation_id is not None and student_context is None:
-        logfire.warning(f"Guess try to access to conversation: {conversation_id}")
+        logfire.warning(f"Guest try to access to conversation: {conversation_id}")
         await websocket.close(code=1008, reason="Access Denied")
     elif conversation_id is not None and student_context is not None:
         load_history = True
@@ -154,7 +154,7 @@ async def websocket_endpoint(websocket: WebSocket,
                         logfire.info(f"Saving conversation and Set Cache for conversation_id: {conversation_id}. Message: {message}")
                         await conversation_service.save_conversation(conversation_id, message, history, student_id=student_context.student_id)
                     else:
-                        logfire.info(f"Set Cache only for guess conversation_id: {conversation_id}. Message: {message}")
+                        logfire.info(f"Set Cache only for guest conversation_id: {conversation_id}. Message: {message}")
                         await conversation_service.save_conversation(conversation_id, message, history)
 
                     logfire.info(f"Full Context Agent Hold: {event.result.all_messages()}")

@@ -26,7 +26,7 @@ async def get_student_context(authorization: Optional[str] = Header(None, alias=
         if scheme.lower() != "bearer":
             return None
         payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
-        student_id = payload.get("student_id")
+        student_id = payload.get("user_id")
         student_name = payload.get("student_name")
         if student_id is None:
             return None
@@ -41,7 +41,7 @@ def verify_jwt (credentials: HTTPAuthorizationCredentials = Depends(security)) -
     token = credentials.credentials
     try:
         payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
-        student_id = payload.get("student_id")
+        student_id = payload.get("user_id")
         student_name = payload.get("student_name")
         if student_id is None:
             raise HTTPException(status_code=401, detail="Invalid token. Please try in again.")

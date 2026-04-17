@@ -20,6 +20,10 @@ primary_region = 'ams'
     grace_period = '2m0s'
     method = 'get'
     path = '/health'
+  
+[mounts]
+  source = "app_data"
+  destination = "/documents"
 
 [[vm]]
   cpu_kind = 'shared'
