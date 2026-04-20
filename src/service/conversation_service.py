@@ -37,7 +37,8 @@ class ConversationService:
                 return []
         else:
             logfire.info(f"Cache miss for conversation_id: {conversation_id}. Fetching from database.")
-            records = await conversation_repo.get_conversation(conversation_id)['raw_message']
+            conversation = await conversation_repo.get_conversation(conversation_id)
+            records = conversation['raw_message']
             logfire.info(f"Fetched {len(records)} messages from database for conversation_id: {conversation_id}. Records: {records}")
 
             summary = await conversation_repo.get_conversation_summary(conversation_id)

@@ -21,7 +21,7 @@ from pydantic_ai import (
 )
 from src.websocket.websocketManager import get_websocket_manager
 import asyncio
-from src.middleware.authorization import StudentContext, get_student_context
+from src.middleware.authorization import StudentContext, get_student_context, get_student_context_by_token
 import uuid
 from src.service.conversation_service import get_conversation_service
 from typing import Optional
@@ -65,10 +65,11 @@ async def get_conversation(student_context: StudentContext = Depends(get_student
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket,
-                             student_context: StudentContext = Depends(get_student_context),
+                             token: Optional[str] = None,
                              conversation_id: Optional[uuid.UUID] = None):
     websocketManager = get_websocket_manager()
     conversation_service = get_conversation_service()
+    student_context = get_student_context_by_token(token) if token else None
     load_history = False
 
     logfire.info(f"Conversation ID: {conversation_id}")
@@ -95,6 +96,8 @@ async def websocket_endpoint(websocket: WebSocket,
         for chat in prev_chat:
             await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type'])
     
+    require_approval = (False, None)
+
     try:
         while True:
             try:
@@ -122,6 +125,11 @@ async def websocket_endpoint(websocket: WebSocket,
                 for approval in approval_response:
                     approval_result.approvals[approval['tool_call_id']] = approval['confirm']
             
+            if approve_result is None and require_approval[0] == True:
+                approval_result = DeferredToolResults()
+                for id in require_approval[1]:
+                    approval_result.approvals[id] = False
+
             
             deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id if student_context else None, student_name=student_context.student_name if student_context else None)
             
@@ -139,6 +147,7 @@ async def websocket_endpoint(websocket: WebSocket,
                 
                 elif isinstance(event, AgentRunResultEvent):
                     if isinstance(event.result.output, DeferredToolRequests):
+                        require_approval = (True, [id.tool_call_id for id in event.result.output.approvals])
                         for approval in event.result.output.approvals:
                             # await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: {approval.args['name']}\nStatus: {approval.args['status']}\nLocation: {approval.args['location']}\nStart Time: {approval.args['start_time']}\nEnd Time: {approval.args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
                             args = approval.args

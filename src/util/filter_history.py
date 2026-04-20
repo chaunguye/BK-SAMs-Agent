@@ -6,8 +6,24 @@ summary_agent = Agent('groq:meta-llama/llama-4-scout-17b-16e-instruct', instruct
     """)
 
 async def summarize_conversation(current_summary: str, messages: list[ModelMessage], latest = 5) -> list[ModelMessage]:
-    recent_messages = messages[-latest:]
-    old_messages = messages[:-latest]
+    if len(message) <= latest:
+        return [], messages
+    
+    actual_latest = latest
+    while actual_latest < len(message):
+        first_recent_msg = messages[-actual_latest]
+        
+        has_tool_returns = False
+        if isinstance(first_recent_msg, ModelRequest):
+            has_tool_returns = any(isinstance(p, ToolReturnPart) for p in first_recent_msg.parts)
+        
+        if has_tool_returns:
+            actual_latest += 1 #include tool call
+        else:
+            break
+
+    recent_messages = messages[-actual_latest:]
+    old_messages = messages[:-actual_latest]
     summary = await summary_agent.run(f"The current summary of the conversation is: {current_summary}\n\nThe messages need to be summarizedare: {old_messages}\n\nPlease provide an updated summary of the conversation based on the current summary and the new messages.")
     summary_message = [ModelRequest(
         parts=[

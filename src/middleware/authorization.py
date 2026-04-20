@@ -49,3 +49,13 @@ def verify_jwt (credentials: HTTPAuthorizationCredentials = Depends(security)) -
     except (jwt.PyJWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token. Please try in again.")
 
+def get_student_context_by_token(token: str):
+    try:
+        payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
+        student_id = payload.get("user_id")
+        student_name = payload.get("student_name")
+        if student_id is None:
+            return None
+        return StudentContext(student_id=student_id, student_name=student_name)
+    except (jwt.PyJWTError, ValueError):
+        return None
