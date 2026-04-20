@@ -28,6 +28,7 @@ from typing import Optional
 import datetime
 from pydantic import TypeAdapter
 from pydantic_ai.messages import ModelMessage
+from src.util.filter_history import name_conversation
 
 router = APIRouter(prefix="/chat", tags=["Agent Chat"])
 
@@ -72,12 +73,18 @@ async def websocket_endpoint(websocket: WebSocket,
     student_context = get_student_context_by_token(token) if token else None
     load_history = False
 
+    is_new_conversation = False
+    first_message = f"Xin chào, {student_context.student_name}" if student_context else "Xin chào bạn!"
+    first_message += " Tôi có thể giúp gì cho bạn hôm nay?"
+
     logfire.info(f"Conversation ID: {conversation_id}")
 
+
     if conversation_id is None and student_context is not None:
-        title = f"{datetime.datetime.now()}"
+        title = "New Chat..."
         logfire.info(f"Creating new conversation for student_id: {student_context.student_id} with title: {title}")
         conversation_id = await conversation_service.create_conversation(title, student_context.student_id)
+        is_first_message = True
     elif conversation_id is None and student_context is None:
         conversation_id = uuid.uuid4()
     elif conversation_id is not None and student_context is None:
@@ -95,7 +102,9 @@ async def websocket_endpoint(websocket: WebSocket,
         # [websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type']) for chat in prev_chat] 
         for chat in prev_chat:
             await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type'])
-    
+    else:
+        await websocketManager.send_personal_message(conversation_id, first_message, type="text")
+
     require_approval = (False, None)
 
     try:
@@ -110,6 +119,20 @@ async def websocket_endpoint(websocket: WebSocket,
                 print(f"Websocket connection with conversation ID: {conversation_id} timed out.")
                 await websocket.close()
                 break
+
+            if is_new_conversation and data:
+            # Run titling in the background so it doesn't block the chat stream
+                async def update_title_task(cid, first_msg):
+                    try:
+                        new_title = await name_conversation(first_msg)
+                        await conversation_service.update_title(cid, new_title)
+                        # Notify frontend to update the sidebar
+                        await websocketManager.send_personal_message(cid, new_title, type="title_update")
+                    except Exception as e:
+                        logfire.error(f"Error occurred while updating conversation title: {e}")
+                
+                asyncio.create_task(update_title_task(conversation_id, data))
+                is_new_conversation = False
             with logfire.span("Fetching Conversation History"):
                 history = await conversation_service.get_conversation(conversation_id)
                 logfire.info(f"History: {history}")
@@ -125,7 +148,7 @@ async def websocket_endpoint(websocket: WebSocket,
                 for approval in approval_response:
                     approval_result.approvals[approval['tool_call_id']] = approval['confirm']
             
-            if approve_result is None and require_approval[0] == True:
+            if approval_result is None and require_approval[0] == True:
                 approval_result = DeferredToolResults()
                 for id in require_approval[1]:
                     approval_result.approvals[id] = False

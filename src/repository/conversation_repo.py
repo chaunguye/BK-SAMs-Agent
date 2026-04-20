@@ -35,8 +35,8 @@ class ConversationRepository:
         
     async def get_conversation_summary(self, conversation_id):
         query = """
-            SELECT summary FROM convesation
-            WHERE conversation_id = $1
+            SELECT summary FROM conversation
+            WHERE id = $1
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, conversation_id) 
@@ -94,6 +94,15 @@ class ConversationRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, student_id)
+        
+    async def update_title(self, conversation_id, new_title):
+        query = """
+            UPDATE conversation
+            SET title = $1
+            WHERE id = $2
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.execute(query, new_title, conversation_id)
 
     def _get_role(self, message):
         if isinstance(message, ModelRequest):

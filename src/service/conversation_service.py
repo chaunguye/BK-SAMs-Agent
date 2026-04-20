@@ -7,7 +7,7 @@ from src.repository.conversation_repo import get_conversation_repo
 from src.cache.cache_manager import get_cache_manager
 import logfire
 from fastapi.encoders import jsonable_encoder
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai.messages import ModelMessage, SystemPromptPart, ModelRequest
 from pydantic import TypeAdapter
 from src.util.filter_history import summarize_conversation
 
@@ -37,14 +37,17 @@ class ConversationService:
                 return []
         else:
             logfire.info(f"Cache miss for conversation_id: {conversation_id}. Fetching from database.")
-            conversation = await conversation_repo.get_conversation(conversation_id)
-            records = conversation['raw_message']
+            records = await conversation_repo.get_conversation(conversation_id)
             logfire.info(f"Fetched {len(records)} messages from database for conversation_id: {conversation_id}. Records: {records}")
 
             summary = await conversation_repo.get_conversation_summary(conversation_id)
+            summary_message = ModelRequest(parts=[
+                SystemPromptPart(content=f"Condensed Context: <past_conversation_summary>\n{summary}\n</past_conversation_summary>")
+            ]) if summary else None
+            
             logfire.info(f"Fetched conversation summary from database for conversation_id: {conversation_id}. Summary: {summary}")
             message_history_object = []
-            message_history_object.append(json.load(summary))
+            message_history_object.append(summary_message) if summary_message else None
             for rec in records:
                 message_history_object.append(json.loads(rec["raw_message"]))
 
@@ -65,10 +68,17 @@ class ConversationService:
     
         if len(un_summarized_messages) > self.max_history:
             with logfire.span("Summarizing conversation history for conversation_id: {}".format(conversation_id)):
-                summary, recent = await summarize_conversation([json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
+                #Get current summary bỏ vào để update lại summary
+                current_summary_record = await conversation_repo.get_conversation_summary(conversation_id)
+
+                current_summary_record_text = json.loads(current_summary_record) if current_summary_record else None
+                current_summary_record_text = current_summary_record_text.parts[0].content if current_summary_record_text else ""
+                
+                summary, recent = await summarize_conversation(current_summary_record_text, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
                 logfire.info(f"Summary result for conversation_id: {conversation_id}: {summary}")
 
-                await conversation_repo.update_conversation_summary(conversation_id, summary)
+                json_summary = jsonable_encoder(summary.model_dump(mode='json')) if summary else None
+                await conversation_repo.update_conversation_summary(conversation_id, json.dumps(json_summary))
                 logfire.info(f"Updated conversation summary in database for conversation_id: {conversation_id}")
                 update_ids = [message['id'] for message in un_summarized_messages[:-self.latest]]
                 # Mark the old messages as summarized in the database
@@ -81,7 +91,9 @@ class ConversationService:
 
         if current_history is None:
             current_history = await self.get_conversation_summary(conversation_id)
-            current_history += await self.get_conversation(conversation_id)['raw_message']
+            un_summarized = await self.get_conversation(conversation_id)
+            for message in un_summarized:
+                current_history.append(message['raw_message'])
 
         current_history.extend(conversation_data)
             
@@ -101,6 +113,10 @@ class ConversationService:
     async def load_history(self, conversation_id):
         conversation_repo = await get_conversation_repo()
         return await conversation_repo.get_conversation_content(conversation_id)
+    
+    async def update_title(self, conversation_id, new_title):
+        conversation_repo = await get_conversation_repo()
+        await conversation_repo.update_conversation_title(conversation_id, new_title)
 
 _conversation_service = None
 def get_conversation_service():
