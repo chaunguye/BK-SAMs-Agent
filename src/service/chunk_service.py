@@ -8,22 +8,8 @@ import logfire
 from datetime import datetime
 from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
 from docling.datamodel.pipeline_options import PdfPipelineOptions
-
-
-
-import threading
-
-_executor = ThreadPoolExecutor(max_workers=4)
-
-# Background preloading of SentenceTransformer model
-def _preload_embedder():
-    try:
-        SentenceTransformer("all-MiniLM-L6-v2")
-    except Exception as e:
-        print(f"[Warning] Failed to preload embedder: {e}")
-
-_preload_thread = threading.Thread(target=_preload_embedder, daemon=True)
-_preload_thread.start()
+from google import genai
+from google.genai import types
 
 
 pipeline_options = PdfPipelineOptions()
@@ -36,33 +22,36 @@ class ChunkService:
     def __init__(self):
         self._converter = None
         self._chunker = None
-        self._embedder = None
+        self._gemini_embedder = None
     
     @property
     def converter(self) -> DocumentConverter:
         if self._converter is None:
-            self._converter = DocumentConverter(
-                format_options={
-                InputFormat.PDF: PdfFormatOption(
-                    pipeline_options=pipeline_options
+            with logfire.span("Initializing Document Converter"):
+                self._converter = DocumentConverter(
+                    format_options={
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_options=pipeline_options
+                    )
+                }
                 )
-            }
-            )
         return self._converter
 
     @property
     def chunker(self) -> RecursiveChunker:
         if self._chunker is None:
-            self._chunker = RecursiveChunker()
+            with logfire.span("Initializing Chunker"):
+                self._chunker = RecursiveChunker(chunk_size=512)
         return self._chunker
     
     @property
-    def embedder(self):
-        if self._embedder is None:
-            self._embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        return self._embedder
-    
-    def heavy_processing_pipeline(self, file_path: str):
+    def gemini_embedder(self):
+        if self._gemini_embedder is None:
+            with logfire.span("Initializing Gemini Embedder"):
+                self._gemini_embedder = genai.Client()
+        return self._gemini_embedder
+
+    async def heavy_processing_pipeline(self, file_path: str):
         # parsing document
         with logfire.span("Parsing Document"):
             doc = self.converter.convert(file_path).document
@@ -74,8 +63,14 @@ class ChunkService:
             texts = [chunk.text for chunk in chunks]
 
         with logfire.span("Embedding Document"):
-            embeddings = self.embedder.encode(texts)
-        return texts, embeddings
+            # embeddings = self.embedder.encode(texts)
+            embeddings = await self.gemini_embedder.models.aio.embed_content(
+                model="gemini-embedding-2",
+                contents=texts,
+                config=types.EmbedContentConfig(output_dimensionality=768)
+            )
+            format_embeddings = [embedding.values for embedding in embeddings.embeddings]
+        return texts, format_embeddings
 
 
     async def process(self, file_path: str, doc_id: str) -> str:
@@ -83,7 +78,7 @@ class ChunkService:
         loop = asyncio.get_running_loop()
 
         with logfire.span("Processing Document"):
-            texts, embeddings = await loop.run_in_executor(_executor, self.heavy_processing_pipeline, file_path)
+            texts, embeddings = await self.heavy_processing_pipeline(file_path)
 
         insert_data = [(str(uuid.uuid4()), text, "[" + ",".join(map(str, embedding)) + "]", doc_id) for text, embedding in zip(texts, embeddings)]
 
@@ -98,8 +93,13 @@ class ChunkService:
         
         with logfire.span("Embedding Search Query"):
             # query_embedding = self.embedder.encode([query])
-            query_embedding = await loop.run_in_executor(_executor, self.embedder.encode, [query])
-        query_embedding_str = "[" + ",".join(str(x) for x in query_embedding[0]) + "]"
+            # query_embedding = await loop.run_in_executor(_executor, self.embedder.encode, [query])
+            query_embedding = await self.gemini_embedder.models.aio.embed_content(
+                model="gemini-embedding-2",
+                contents=query,
+                config=types.EmbedContentConfig(output_dimensionality=768)
+            )
+        query_embedding_str = "[" + ",".join(str(x) for x in query_embedding.embeddings[0].values) + "]"
 
         chunkRepo = await get_chunk_repo()
         with logfire.span("Searching Chunks in Database"):
@@ -110,8 +110,12 @@ class ChunkService:
         loop = asyncio.get_running_loop()
         
         with logfire.span("Embedding Search Query for Activity Chunks"):
-            query_embedding = await loop.run_in_executor(_executor, self.embedder.encode, [query])
-        query_embedding_str = "[" + ",".join(str(x) for x in query_embedding[0]) + "]"
+            query_embedding = await self.gemini_embedder.models.aio.embed_content(
+                model="gemini-embedding-2",
+                contents=query,
+                config=types.EmbedContentConfig(output_dimensionality=768)
+            )
+        query_embedding_str = "[" + ",".join(str(x) for x in query_embedding.embeddings[0].values) + "]"
 
         chunkRepo = await get_chunk_repo()
         with logfire.span("Searching Activity Chunks in Database"):

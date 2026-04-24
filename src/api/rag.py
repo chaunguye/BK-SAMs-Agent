@@ -1,3 +1,5 @@
+import types
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from fastapi import UploadFile, BackgroundTasks, HTTPException
@@ -5,9 +7,11 @@ import aiofiles
 import uuid
 from src.service.chunk_service import get_chunk_service
 from src.repository.chunk_repo import get_chunk_repo
+from src.repository.activity_repo import get_activity_repo
 from src.middleware.authorization import StudentContext, verify_jwt
 import os
 from fastapi import Depends
+from src.testing.rag_chunks_dataset_prepare import prepare_dataset
 
 
 router = APIRouter(prefix="/upload", tags=["RAG Document Upload"])
@@ -40,4 +44,25 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
     
     background_tasks.add_task(get_chunk_service().process, file_path, doc_id)
 
+    if activity_id is not None:
+        activity_repo = await get_activity_repo()
+        activity = await activity_repo.get_activity_by_id(activity_id)
+
+        chunk_service = await get_chunk_service()
+
+        activity_string = f"Activity: {activity['name']}, Location: {activity['location']}, Status: {activity['status']}, Description: {activity['description']}, Start Time: {activity['start_time']}, End Time: {activity['end_time']}"
+        activity_embedding = await chunk_service.gemini_embedder.models.aio.embed_content(
+            model="gemini-embedding-2",
+            contents=activity_string,
+            config=types.EmbedContentConfig(output_dimensionality=768)
+        )
+
+        await activity_repo.update_activity_embedding(activity_id, activity_embedding.embeddings[0].values)
+
+
     return JSONResponse({"status": "parsed", "filename": file.filename, "document_id": doc_id})
+
+@router.get("/dataset")
+async def get_dataset():
+    dataset = await prepare_dataset()
+    return JSONResponse({"dataset": dataset})

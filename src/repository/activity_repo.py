@@ -1,5 +1,8 @@
+from typing import List
+
 from src.database.database_connect import get_db_pool
 import uuid
+from datetime import datetime
 
 class ActivityRepository:
     def __init__(self, pool):
@@ -101,6 +104,49 @@ class ActivityRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, student_id)
+        
+    async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
+        query = """
+            SELECT *
+            FROM activity
+            WHERE start_time >= COALESCE($1::timestamp, current_date)
+            AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
+            AND ($3::timestamp IS NULL OR end_time <= $3)
+            AND ($4::text IS NULL OR location ILIKE '%' || $4 || '%')
+            AND ($5::activity_status IS NULL OR status = $5::activity_status)
+            ORDER BY {} {}
+            LIMIT $6
+        """
+        order_direction = "DESC" if desc else "ASC"
+        
+        allowed_columns = {"name", "time_start", "location", "number_of_conversion_day"}
+
+        if sort_by not in allowed_columns:
+            sort_by = "number_of_conversion_day"  # default sorting column
+
+        query = query.format(sort_by, order_direction)
+        
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, time_start, name, time_end, location, status, top_k)
+        return [dict(row) for row in rows]
+    
+    async def get_activity_by_id(self, activity_id: uuid.UUID):
+        query = """
+            SELECT id, name, location, status, description, start_time, end_time
+            FROM activity
+            WHERE id = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(query, activity_id)
+        
+    async def update_activity_embedding(self, activity_id: uuid.UUID, embedding: List):
+        query = """
+            UPDATE activity
+            SET activity_name_embeddings = $1::vector
+            WHERE id = $2
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(query, "[" + ",".join(str(x) for x in embedding) + "]", str(activity_id))
         
 _activity_repo = None
 async def get_activity_repo():

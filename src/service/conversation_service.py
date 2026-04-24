@@ -37,15 +37,19 @@ class ConversationService:
                 return []
         else:
             logfire.info(f"Cache miss for conversation_id: {conversation_id}. Fetching from database.")
-            records = await conversation_repo.get_conversation(conversation_id)
-            logfire.info(f"Fetched {len(records)} messages from database for conversation_id: {conversation_id}. Records: {records}")
+            # records = await conversation_repo.get_conversation(conversation_id)
+            # logfire.info(f"Fetched {len(records)} messages from database for conversation_id: {conversation_id}. Records: {records}")
 
+
+            # Fetch unsummarized messages from the database
             summary = await conversation_repo.get_conversation_summary(conversation_id)
-            summary_message = ModelRequest(parts=[
-                SystemPromptPart(content=f"Condensed Context: <past_conversation_summary>\n{summary}\n</past_conversation_summary>")
-            ]) if summary else None
-            
-            logfire.info(f"Fetched conversation summary from database for conversation_id: {conversation_id}. Summary: {summary}")
+            summary_message = json.loads(summary) if summary else None
+            logfire.info(f"Fetched conversation summary from database for conversation_id: {conversation_id}. Summary: {summary_message}")
+
+            #Fetch unsummarized messages from the database
+            records = await conversation_repo.get_conversation(conversation_id)
+            logfire.info(f"Fetched {len(records)} unsummarized messages from database for conversation_id: {conversation_id}. Records: {records}")
+
             message_history_object = []
             message_history_object.append(summary_message) if summary_message else None
             for rec in records:
@@ -71,9 +75,9 @@ class ConversationService:
                 #Get current summary bỏ vào để update lại summary
                 current_summary_record = await conversation_repo.get_conversation_summary(conversation_id)
 
-                current_summary_record_text = json.loads(current_summary_record) if current_summary_record else None
-                current_summary_record_text = current_summary_record_text.parts[0].content if current_summary_record_text else ""
-                
+                current_summary_record_json = json.loads(current_summary_record) if current_summary_record else None
+                current_summary_record_text = current_summary_record_json.parts[0].content if current_summary_record_json else ""
+
                 summary, recent = await summarize_conversation(current_summary_record_text, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
                 logfire.info(f"Summary result for conversation_id: {conversation_id}: {summary}")
 

@@ -17,8 +17,8 @@ class ActivityService:
         return f"Successfully unregistered from activity {activity_id}." if success else f"Failed to unregister from activity {activity_id}."
     async def search_activity_by_name(self, activity_name: str):
         activity_repo = await get_activity_repo()
-        return await activity_repo.get_activity_by_name(activity_name)
-        # return await activity_repo.get_activity_id_hybrid(activity_name)        
+        # return await activity_repo.get_activity_by_name(activity_name)
+        return await activity_repo.get_activity_id_hybrid(activity_name)        
     async def get_activity_details(self, activity_id: uuid.UUID):
         activity_repo = await get_activity_repo()
         return await activity_repo.get_activity_details(activity_id)

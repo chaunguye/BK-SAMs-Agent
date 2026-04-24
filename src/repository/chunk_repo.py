@@ -21,6 +21,12 @@ class ChunkRepository:
         """
         async with self.pool.acquire() as conn:
             await conn.executemany(query, chunks_data)
+
+    async def get_chunks_by_document_id(self, document_id):
+        query = "SELECT id, text_content FROM chunk WHERE document_id = $1"
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, document_id)
+        return [dict(row) for row in rows]
     
     async def search_chunks_by_embedding(self, query_embedding, top_k=5):
         query = """
