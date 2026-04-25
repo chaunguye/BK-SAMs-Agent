@@ -50,7 +50,7 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
 
         chunk_service = await get_chunk_service()
 
-        activity_string = f"Activity: {activity['name']}, Location: {activity['location']}, Status: {activity['status']}, Description: {activity['description']}, Start Time: {activity['start_time']}, End Time: {activity['end_time']}"
+        activity_string = f"Activity: {activity['name']}, Location: {activity['location']}, Status: {activity['status']}, Description: {activity['description']}"
         activity_embedding = await chunk_service.gemini_embedder.models.aio.embed_content(
             model="gemini-embedding-2",
             contents=activity_string,

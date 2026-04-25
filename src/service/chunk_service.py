@@ -1,22 +1,11 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from chonkie import RecursiveChunker
-from sentence_transformers import SentenceTransformer
 import uuid
 from src.repository.chunk_repo import get_chunk_repo
 import logfire
 from datetime import datetime
-from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
-from docling.datamodel.pipeline_options import PdfPipelineOptions
 from google import genai
 from google.genai import types
-
-
-pipeline_options = PdfPipelineOptions()
-# Disable OCR (only works if PDFs are digital, not scanned)
-pipeline_options.do_ocr = False 
-# Use a faster, simpler table model
-pipeline_options.do_table_structure = False
 
 class ChunkService:
     def __init__(self):
@@ -25,8 +14,17 @@ class ChunkService:
         self._gemini_embedder = None
     
     @property
-    def converter(self) -> DocumentConverter:
+    def converter(self):
         if self._converter is None:
+            from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+            
+            pipeline_options = PdfPipelineOptions()
+            # Disable OCR (only works if PDFs are digital, not scanned)
+            pipeline_options.do_ocr = False 
+            # Use a faster, simpler table model
+            pipeline_options.do_table_structure = False
+
             with logfire.span("Initializing Document Converter"):
                 self._converter = DocumentConverter(
                     format_options={
@@ -38,8 +36,9 @@ class ChunkService:
         return self._converter
 
     @property
-    def chunker(self) -> RecursiveChunker:
+    def chunker(self):
         if self._chunker is None:
+            from chonkie import RecursiveChunker
             with logfire.span("Initializing Chunker"):
                 self._chunker = RecursiveChunker(chunk_size=512)
         return self._chunker

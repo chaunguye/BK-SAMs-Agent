@@ -84,7 +84,7 @@ async def websocket_endpoint(websocket: WebSocket,
         title = "New Chat..."
         logfire.info(f"Creating new conversation for student_id: {student_context.student_id} with title: {title}")
         conversation_id = await conversation_service.create_conversation(title, student_context.student_id)
-        is_first_message = True
+        is_new_conversation = True
     elif conversation_id is None and student_context is None:
         conversation_id = uuid.uuid4()
     elif conversation_id is not None and student_context is None:
@@ -101,9 +101,9 @@ async def websocket_endpoint(websocket: WebSocket,
         logfire.info(f"Load previous chat history for conversation_id {conversation_id}")
         # [websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type']) for chat in prev_chat] 
         for chat in prev_chat:
-            await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type'])
-    else:
-        await websocketManager.send_personal_message(conversation_id, first_message, type="text")
+            await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="history", sender_type=chat['sender_type'])
+    # else:
+    #     await websocketManager.send_personal_message(conversation_id, first_message, type="text")
 
     require_approval = (False, None)
 
@@ -127,7 +127,7 @@ async def websocket_endpoint(websocket: WebSocket,
                         new_title = await name_conversation(first_msg)
                         await conversation_service.update_title(cid, new_title)
                         # Notify frontend to update the sidebar
-                        await websocketManager.send_personal_message(cid, new_title, type="title_update")
+                        await websocketManager.send_session_init(cid, new_title)
                     except Exception as e:
                         logfire.error(f"Error occurred while updating conversation title: {e}")
                 

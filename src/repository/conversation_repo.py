@@ -39,7 +39,7 @@ class ConversationRepository:
             WHERE id = $1
         """
         async with self.pool.acquire() as conn:
-            return await conn.fetch(query, conversation_id) 
+            return await conn.fetchval(query, conversation_id) 
         
     async def update_conversation_summary(self, conversation_id, summary):
         query = """
