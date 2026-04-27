@@ -29,14 +29,14 @@ async def summarize_conversation(current_summary: str, messages: list[ModelMessa
     summary_message = ModelRequest(
         parts=[
             SystemPromptPart(
-                content=f"CONTEXT RECAP: The following is a summary of the earlier part of this conversation: {summary}"
+                content=f"CONTEXT RECAP: The following is a summary of the earlier part of this conversation: {summary.output}"
             )
         ]
     )
     return summary_message, recent_messages
 
 async def name_conversation(messages: list[ModelMessage]) -> str:
-    summary = await summary_agent.run(f"Based on the following conversation, provide a concise and descriptive name for this conversation that captures the main topic and purpose. The name should be a maximum of 5 words. Conversation: {messages}")
-    return summary
+    name = await summary_agent.run(f"Based on the following conversation, provide a short, concise and descriptive name for this conversation that captures the main topic and purpose. Response with the name only. The name should be a maximum of 5 words. Conversation: {messages}")
+    return name.output
 
 

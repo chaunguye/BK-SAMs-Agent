@@ -1,4 +1,4 @@
-import types
+from google.genai import types
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -48,10 +48,10 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
         activity_repo = await get_activity_repo()
         activity = await activity_repo.get_activity_by_id(activity_id)
 
-        chunk_service = await get_chunk_service()
+        chunk_service = get_chunk_service()
 
         activity_string = f"Activity: {activity['name']}, Location: {activity['location']}, Status: {activity['status']}, Description: {activity['description']}"
-        activity_embedding = await chunk_service.gemini_embedder.models.aio.embed_content(
+        activity_embedding = await chunk_service.gemini_embedder.aio.models.embed_content(
             model="gemini-embedding-2",
             contents=activity_string,
             config=types.EmbedContentConfig(output_dimensionality=768)
@@ -61,6 +61,27 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
 
 
     return JSONResponse({"status": "parsed", "filename": file.filename, "document_id": doc_id})
+
+@router.get("/activity")
+async def get_activity(activity_id: str):
+    activity_repo = await get_activity_repo()
+    activity = await activity_repo.get_activity_by_id(activity_id)
+    if activity is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    else:
+        chunk_service = get_chunk_service()
+
+        activity_string = f"Activity: {activity['name']}, Location: {activity['location']}, Status: {activity['status']}, Description: {activity['description']}"
+        activity_embedding = await chunk_service.gemini_embedder.aio.models.embed_content(
+            model="gemini-embedding-2",
+            contents=activity_string,
+            config=types.EmbedContentConfig(output_dimensionality=768)
+        )
+
+        await activity_repo.update_activity_embedding(activity_id, activity_embedding.embeddings[0].values)
+
+    return JSONResponse({"status": "success", "activity": activity_string})
+
 
 @router.get("/dataset")
 async def get_dataset():

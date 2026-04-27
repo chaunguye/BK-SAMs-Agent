@@ -64,5 +64,7 @@ def get_student_context_by_token(token: str):
         if student_id is None:
             return None
         return StudentContext(student_id=student_id, student_name=student_name)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired. Please log in again.")
     except (jwt.PyJWTError, ValueError):
         return None

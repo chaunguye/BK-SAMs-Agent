@@ -63,7 +63,7 @@ class ChunkService:
 
         with logfire.span("Embedding Document"):
             # embeddings = self.embedder.encode(texts)
-            embeddings = await self.gemini_embedder.models.aio.embed_content(
+            embeddings = await self.gemini_embedder.aio.models.embed_content(
                 model="gemini-embedding-2",
                 contents=texts,
                 config=types.EmbedContentConfig(output_dimensionality=768)
@@ -93,7 +93,7 @@ class ChunkService:
         with logfire.span("Embedding Search Query"):
             # query_embedding = self.embedder.encode([query])
             # query_embedding = await loop.run_in_executor(_executor, self.embedder.encode, [query])
-            query_embedding = await self.gemini_embedder.models.aio.embed_content(
+            query_embedding = await self.gemini_embedder.aio.models.embed_content(
                 model="gemini-embedding-2",
                 contents=query,
                 config=types.EmbedContentConfig(output_dimensionality=768)
@@ -109,7 +109,7 @@ class ChunkService:
         loop = asyncio.get_running_loop()
         
         with logfire.span("Embedding Search Query for Activity Chunks"):
-            query_embedding = await self.gemini_embedder.models.aio.embed_content(
+            query_embedding = await self.gemini_embedder.aio.models.embed_content(
                 model="gemini-embedding-2",
                 contents=query,
                 config=types.EmbedContentConfig(output_dimensionality=768)

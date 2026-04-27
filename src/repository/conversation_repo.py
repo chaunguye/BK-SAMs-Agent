@@ -86,6 +86,16 @@ class ConversationRepository:
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, title, user_id)
         
+
+    async def update_conversation_title(self, conversation_id, new_title):
+        query = """
+            UPDATE conversation
+            SET title = $1
+            WHERE id = $2
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.execute(query, new_title, conversation_id)
+        
     async def get_conversation_list(self, student_id):
         query = """
             SELECT id, title 
@@ -117,9 +127,9 @@ class ConversationRepository:
         for part in message.parts:
             if isinstance(part, TextPart):
                 texts.append(part.content)
-            elif isinstance(part, ToolCallPart):
-                # We might want to store that a tool was called in the content
-                texts.append(f"[Tool Call: {part.tool_name}]")
+            # elif isinstance(part, ToolCallPart):
+            #     # We might want to store that a tool was called in the content
+            #     texts.append(f"[Tool Call: {part.tool_name}]")
             elif isinstance(part, UserPromptPart):
                 texts.append(part.content)
         return "\n".join(texts)

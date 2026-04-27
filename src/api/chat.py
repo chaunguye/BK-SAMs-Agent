@@ -29,6 +29,7 @@ import datetime
 from pydantic import TypeAdapter
 from pydantic_ai.messages import ModelMessage
 from src.util.filter_history import name_conversation
+import pytz
 
 router = APIRouter(prefix="/chat", tags=["Agent Chat"])
 
@@ -78,6 +79,7 @@ async def websocket_endpoint(websocket: WebSocket,
     first_message += " Tôi có thể giúp gì cho bạn hôm nay?"
 
     logfire.info(f"Conversation ID: {conversation_id}")
+    logfire.info(f"Student Context: {student_context}")
 
 
     if conversation_id is None and student_context is not None:
@@ -125,6 +127,7 @@ async def websocket_endpoint(websocket: WebSocket,
                 async def update_title_task(cid, first_msg):
                     try:
                         new_title = await name_conversation(first_msg)
+                        logfire.info(f"Generated title for conversation_id {cid}: {new_title}")
                         await conversation_service.update_title(cid, new_title)
                         # Notify frontend to update the sidebar
                         await websocketManager.send_session_init(cid, new_title)
@@ -133,6 +136,8 @@ async def websocket_endpoint(websocket: WebSocket,
                 
                 asyncio.create_task(update_title_task(conversation_id, data))
                 is_new_conversation = False
+
+            # Not fetch cache on new conversation - Fix this
             with logfire.span("Fetching Conversation History"):
                 history = await conversation_service.get_conversation(conversation_id)
                 logfire.info(f"History: {history}")
@@ -173,11 +178,15 @@ async def websocket_endpoint(websocket: WebSocket,
                         require_approval = (True, [id.tool_call_id for id in event.result.output.approvals])
                         for approval in event.result.output.approvals:
                             # await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: {approval.args['name']}\nStatus: {approval.args['status']}\nLocation: {approval.args['location']}\nStart Time: {approval.args['start_time']}\nEnd Time: {approval.args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
+                            logfire.info(f"Args for approval: {approval.args}")
                             args = approval.args
                             if isinstance(args, str):
                                 args = json.loads(args)
-                            await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: \n{args['name']}\nStatus: {args['status']}\nLocation: {args['location']}\nStart Time: {args['start_time']}\nEnd Time: {args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
-                        
+                            args['start_time'] = datetime.datetime.fromisoformat(args['start_time'])
+                            args['end_time'] = datetime.datetime.fromisoformat(args['end_time'])
+                            await websocketManager.send_personal_message(conversation_id, f"Vui lòng xác nhận đăng ký hoạt động: \n{args['name']}\nTình trạng: {args['status']}\nĐịa điểm: {args['location']}\nBắt đầu: {args['start_time'].strftime('%d-%m-%Y %H:%M')}\nKết thúc: {args['end_time'].strftime('%d-%m-%Y %H:%M')}", type="approval", tool_call_id=approval.tool_call_id)
+                            # await websocketManager.send_personal_message(conversation_id, f"Vui lòng xác nhận đăng ký hoạt động: \n{args['name']}\nTình trạng: {args['status']}\nĐịa điểm: {args['location']}\nBắt đầu: {args['start_time']}\nKết thúc: {args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
+
                     else:
                         await websocketManager.send_personal_message(conversation_id, f"Final result: {event}", type="end")
 

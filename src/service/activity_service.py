@@ -2,6 +2,8 @@ from src.repository.activity_repo import get_activity_repo
 import uuid
 import logfire
 from datetime import datetime
+from google.genai import types
+from src.service.chunk_service import get_chunk_service
 
 class ActivityService:
     async def register_activity(self, student_id: uuid.UUID, activity_id: uuid.UUID) -> str:
@@ -18,7 +20,13 @@ class ActivityService:
     async def search_activity_by_name(self, activity_name: str):
         activity_repo = await get_activity_repo()
         # return await activity_repo.get_activity_by_name(activity_name)
-        return await activity_repo.get_activity_id_hybrid(activity_name)        
+        chunk_service = get_chunk_service()
+        activity_embedding = await chunk_service.gemini_embedder.aio.models.embed_content(
+            model="gemini-embedding-2",
+            contents=activity_name,
+            config=types.EmbedContentConfig(output_dimensionality=768)
+        )
+        return await activity_repo.get_activity_id_hybrid(activity_name, "[" + ",".join(str(x) for x in activity_embedding.embeddings[0].values) + "]")  
     async def get_activity_details(self, activity_id: uuid.UUID):
         activity_repo = await get_activity_repo()
         return await activity_repo.get_activity_details(activity_id)

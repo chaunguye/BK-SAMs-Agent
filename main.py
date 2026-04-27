@@ -15,7 +15,10 @@ app = FastAPI()
 app.include_router(rag.router)
 app.include_router(chat.router)
 
-origins = ["https://bk-sams-fe.vercel.app", "http://localhost:5173"]
+origins = ["https://bk-sams-fe.vercel.app", 
+           "http://localhost:5173", 
+           "https://bk-sams-fe.hknam0311.workers.dev",
+           "https://bk-sams.space" ]
 
 app.add_middleware(
     CORSMiddleware,

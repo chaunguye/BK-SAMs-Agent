@@ -3,6 +3,7 @@ from typing import List
 from src.database.database_connect import get_db_pool
 import uuid
 from datetime import datetime
+import logfire
 
 class ActivityRepository:
     def __init__(self, pool):
@@ -36,7 +37,8 @@ class ActivityRepository:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_name)
 
-    async def get_activity_id_hybrid(self, activity_name: str):
+    async def get_activity_id_hybrid(self, activity_name: str, activity_embedding: str):
+        logfire.info(f"Searching for activity with name: {activity_name} and embedding: {activity_embedding}")
         query = """
             SELECT id, name, location, status, description, start_time, end_time, similarity(name::text, $1) as score
             FROM activity
@@ -50,40 +52,45 @@ class ActivityRepository:
         query = """
             SELECT id, name, location, status, description, start_time, end_time
             FROM activity
-            ORDER BY name_embedding <=> $1 LIMIT 10
+            ORDER BY activity_name_embeddings <=> $1 LIMIT 10
             """
         async with self.pool.acquire() as conn:
-            embedding_results = await conn.fetch(query, activity_name)
+            embedding_results = await conn.fetch(query, activity_embedding)
 
         return await self.rrf_compute(trigram_results, embedding_results)
 
         
     async def rrf_compute(self, trigram_results, embedding_results, k=60):
-        # Create a dictionary to store the best score for each activity
-        scores = {}
+        logfire.info(f"Computing RRF scores for {len(trigram_results)} trigram results and {len(embedding_results)} embedding results with k={k}")
+        #{ activity_id: {"score": total_rrf_score, "data": full_record_object} }
+        results_map = {}
 
-        # Process trigram results
-        for rank, record in enumerate(trigram_results, start=1):
-            activity_id = record['id']
-            score = 1 / (k + rank)  # RRF score for trigram results
-            if activity_id not in scores:
-                scores[activity_id] = score
-            else:
-                scores[activity_id] += score
+        # Helper function to process results
+        def process_results(records):
+            for rank, record in enumerate(records, start=1):
+                activity_id = record['id']
+                score = 1 / (k + rank)
+                
+                if activity_id not in results_map:
+                    # Store both the score AND the original record data
+                    results_map[activity_id] = {
+                        "score": score,
+                        "data": dict(record) # Convert asyncpg Record to Dict
+                    }
+                else:
+                    results_map[activity_id]["score"] += score
 
-        # Process embedding results
-        for rank, record in enumerate(embedding_results, start=1):
-            activity_id = record['id']
-            score = 1 / (k + rank)  # RRF score for embedding results
-            if activity_id not in scores:
-                scores[activity_id] = score
-            else:
-                scores[activity_id] += score
+        process_results(trigram_results)
+        process_results(embedding_results)
 
-        # Sort activities by their combined RRF scores
-        sorted_activities = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-
-        return sorted_activities[:1]  # Return top 1 activity based on RRF scores
+        # Sort by the nested 'score' value
+        sorted_items = sorted(
+            results_map.values(), 
+            key=lambda x: x["score"], 
+            reverse=True
+        )
+        logfire.info(f"RRF computation completed. Sorted results: {sorted_items[0]['data'] if sorted_items else 'No results found'}")
+        return sorted_items[0]['data'] if sorted_items else None
 
     async def get_activity_details(self, activity_id: uuid.UUID):
         query = """
