@@ -21,13 +21,15 @@ from pydantic_ai import (
 )
 from src.websocket.websocketManager import get_websocket_manager
 import asyncio
-from src.middleware.authorization import StudentContext, get_student_context
+from src.middleware.authorization import StudentContext, get_student_context, get_student_context_by_token
 import uuid
 from src.service.conversation_service import get_conversation_service
 from typing import Optional
 import datetime
 from pydantic import TypeAdapter
 from pydantic_ai.messages import ModelMessage
+from src.util.filter_history import name_conversation
+import pytz
 
 router = APIRouter(prefix="/chat", tags=["Agent Chat"])
 
@@ -51,7 +53,7 @@ async def test_query(query: str):
 async def get_conversation(student_context: StudentContext = Depends(get_student_context)):
     """This endpoint returns a list of conversation of a user based on user ID"""
     if student_context is None:
-        return JSONResponse({"user_type": "guess", "conversation": []})
+        return JSONResponse({"user_type": "guest", "conversation": []})
     converation_service = get_conversation_service()
     conversation_list = await converation_service.get_conversation_list(student_context.student_id)
     list_json = [
@@ -65,23 +67,31 @@ async def get_conversation(student_context: StudentContext = Depends(get_student
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket,
-                             student_context: StudentContext = Depends(get_student_context),
+                             token: Optional[str] = None,
                              conversation_id: Optional[uuid.UUID] = None):
     websocketManager = get_websocket_manager()
     conversation_service = get_conversation_service()
+    student_context = get_student_context_by_token(token) if token else None
     load_history = False
 
+    is_new_conversation = False
+    first_message = f"Xin chào, {student_context.student_name}" if student_context else "Xin chào bạn!"
+    first_message += " Tôi có thể giúp gì cho bạn hôm nay?"
+
     logfire.info(f"Conversation ID: {conversation_id}")
+    logfire.info(f"Student Context: {student_context}")
+
 
     if conversation_id is None and student_context is not None:
-        title = f"{datetime.datetime.now()}"
+        title = "New Chat..."
         logfire.info(f"Creating new conversation for student_id: {student_context.student_id} with title: {title}")
         conversation_id = await conversation_service.create_conversation(title, student_context.student_id)
+        is_new_conversation = True
     elif conversation_id is None and student_context is None:
         conversation_id = uuid.uuid4()
     elif conversation_id is not None and student_context is None:
-        logfire.warning(f"Guess try to access to conversation: {conversation_id}")
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Access Denied")
+        logfire.warning(f"Guest try to access to conversation: {conversation_id}")
+        await websocket.close(code=1008, reason="Access Denied")
     elif conversation_id is not None and student_context is not None:
         load_history = True
 
@@ -93,8 +103,12 @@ async def websocket_endpoint(websocket: WebSocket,
         logfire.info(f"Load previous chat history for conversation_id {conversation_id}")
         # [websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type']) for chat in prev_chat] 
         for chat in prev_chat:
-            await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="text", sender_type=chat['sender_type'])
-    
+            await websocketManager.send_personal_message(conversation_id, chat['text_content'], type="history", sender_type=chat['sender_type'])
+    # else:
+    #     await websocketManager.send_personal_message(conversation_id, first_message, type="text")
+
+    require_approval = (False, None)
+
     try:
         while True:
             try:
@@ -107,6 +121,23 @@ async def websocket_endpoint(websocket: WebSocket,
                 print(f"Websocket connection with conversation ID: {conversation_id} timed out.")
                 await websocket.close()
                 break
+
+            if is_new_conversation and data:
+            # Run titling in the background so it doesn't block the chat stream
+                async def update_title_task(cid, first_msg):
+                    try:
+                        new_title = await name_conversation(first_msg)
+                        logfire.info(f"Generated title for conversation_id {cid}: {new_title}")
+                        await conversation_service.update_title(cid, new_title)
+                        # Notify frontend to update the sidebar
+                        await websocketManager.send_session_init(cid, new_title)
+                    except Exception as e:
+                        logfire.error(f"Error occurred while updating conversation title: {e}")
+                
+                asyncio.create_task(update_title_task(conversation_id, data))
+                is_new_conversation = False
+
+            # Not fetch cache on new conversation - Fix this
             with logfire.span("Fetching Conversation History"):
                 history = await conversation_service.get_conversation(conversation_id)
                 logfire.info(f"History: {history}")
@@ -122,6 +153,11 @@ async def websocket_endpoint(websocket: WebSocket,
                 for approval in approval_response:
                     approval_result.approvals[approval['tool_call_id']] = approval['confirm']
             
+            if approval_result is None and require_approval[0] == True:
+                approval_result = DeferredToolResults()
+                for id in require_approval[1]:
+                    approval_result.approvals[id] = False
+
             
             deps = AgentConfig(chunk_service=get_chunk_service(), activity_service=get_activity_service(), student_id=student_context.student_id if student_context else None, student_name=student_context.student_name if student_context else None)
             
@@ -139,13 +175,18 @@ async def websocket_endpoint(websocket: WebSocket,
                 
                 elif isinstance(event, AgentRunResultEvent):
                     if isinstance(event.result.output, DeferredToolRequests):
+                        require_approval = (True, [id.tool_call_id for id in event.result.output.approvals])
                         for approval in event.result.output.approvals:
                             # await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: {approval.args['name']}\nStatus: {approval.args['status']}\nLocation: {approval.args['location']}\nStart Time: {approval.args['start_time']}\nEnd Time: {approval.args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
+                            logfire.info(f"Args for approval: {approval.args}")
                             args = approval.args
                             if isinstance(args, str):
                                 args = json.loads(args)
-                            await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: \n{args['name']}\nStatus: {args['status']}\nLocation: {args['location']}\nStart Time: {args['start_time']}\nEnd Time: {args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
-                        
+                            args['start_time'] = datetime.datetime.fromisoformat(args['start_time'])
+                            args['end_time'] = datetime.datetime.fromisoformat(args['end_time'])
+                            await websocketManager.send_personal_message(conversation_id, f"Vui lòng xác nhận đăng ký hoạt động: \n{args['name']}\nTình trạng: {args['status']}\nĐịa điểm: {args['location']}\nBắt đầu: {args['start_time'].strftime('%d-%m-%Y %H:%M')}\nKết thúc: {args['end_time'].strftime('%d-%m-%Y %H:%M')}", type="approval", tool_call_id=approval.tool_call_id)
+                            # await websocketManager.send_personal_message(conversation_id, f"Vui lòng xác nhận đăng ký hoạt động: \n{args['name']}\nTình trạng: {args['status']}\nĐịa điểm: {args['location']}\nBắt đầu: {args['start_time']}\nKết thúc: {args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
+
                     else:
                         await websocketManager.send_personal_message(conversation_id, f"Final result: {event}", type="end")
 
@@ -154,7 +195,7 @@ async def websocket_endpoint(websocket: WebSocket,
                         logfire.info(f"Saving conversation and Set Cache for conversation_id: {conversation_id}. Message: {message}")
                         await conversation_service.save_conversation(conversation_id, message, history, student_id=student_context.student_id)
                     else:
-                        logfire.info(f"Set Cache only for guess conversation_id: {conversation_id}. Message: {message}")
+                        logfire.info(f"Set Cache only for guest conversation_id: {conversation_id}. Message: {message}")
                         await conversation_service.save_conversation(conversation_id, message, history)
 
                     logfire.info(f"Full Context Agent Hold: {event.result.all_messages()}")
