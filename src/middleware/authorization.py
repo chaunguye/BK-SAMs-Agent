@@ -27,7 +27,10 @@ async def get_student_context(authorization: Optional[str] = Header(None, alias=
             return None
         payload = jwt.decode(token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")])
         student_id = payload.get("user_id")
-        student_name = payload.get("student_name")
+        student_info = payload.get("user_info", {}) 
+        first_name = student_info.get("first_name")
+        last_name = student_info.get("last_name")
+        student_name = f"{last_name} {first_name}".strip() if first_name or last_name else None
         if student_id is None:
             return None
         return StudentContext(student_id=student_id, student_name=student_name)
@@ -45,7 +48,7 @@ def verify_jwt (credentials: HTTPAuthorizationCredentials = Depends(security)) -
         user_info = payload.get("user_info")
         first_name = user_info.get("first_name") if user_info else None
         last_name = user_info.get("last_name") if user_info else None
-        student_name = f"{first_name} {last_name}".strip() if first_name or last_name else None
+        student_name = f"{last_name} {first_name}".strip() if first_name or last_name else None
         if student_id is None:
             raise HTTPException(status_code=401, detail="Invalid token. Please try in again.")
         return StudentContext(student_id=student_id, student_name=student_name)
@@ -59,7 +62,7 @@ def get_student_context_by_token(token: str):
         user_info = payload.get("user_info")
         first_name = user_info.get("first_name") if user_info else None
         last_name = user_info.get("last_name") if user_info else None
-        student_name = f"{first_name} {last_name}".strip() if first_name or last_name else None
+        student_name = f"{last_name} {first_name}".strip() if first_name or last_name else None
         
         if student_id is None:
             return None

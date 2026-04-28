@@ -46,12 +46,14 @@ async def search_activity_chunks(ctx: RunContext[AgentConfig],
     with logfire.span("Searching Activity Chunks with query: {}".format(query)):
         relevant_chunks = await chunk_service.search_chunks_of_activity(query, top_k, activity_id)
         logfire.info(f"Found {len(relevant_chunks)} relevant activity chunks: {relevant_chunks}")
-    return 'Relevant activity chunks: ' + ','.join([chunk['text_content'] for chunk in relevant_chunks])
+    for chunk in relevant_chunks:
+        if 'id' in chunk:
+            chunk['id'] = str(chunk['id'])
+    return f"Relevant activity chunks: {json.dumps(relevant_chunks, default=str) if relevant_chunks else "No relevant activity chunks found based on the provided query and activity ID."}"
 
 ActivityStatus = Literal['OPEN', 'CLOSED', 'COMPLETED', 'CANCELLED']
 async def search_relevant_activities(ctx: RunContext[AgentConfig], 
                                     time_start: datetime = Field(default=None, description="The start time of the activity (format: YYYY-MM-DD)"),
-                                    name: str = Field(default=None, description="The name of the activity"),
                                     time_end: datetime = Field(default=None, description="The end time of the activity (format: YYYY-MM-DD)"),
                                     location: str = Field(default=None, description="The location of the activity"),
                                     status: ActivityStatus = Field(default=None, description="The status of the activity")) -> str:
@@ -63,9 +65,9 @@ async def search_relevant_activities(ctx: RunContext[AgentConfig],
     else:
         activity_service = get_activity_service()
 
-    with logfire.span("Searching Relevant Activities with parameters: time_start={}, name={}, time_end={}, location={}, status={}".format(time_start, name, time_end, location, status)):
-        relevant_activities = await activity_service.search_relevant_activity(time_start=time_start, name=name, time_end=time_end, location=location, status=status, top_k=5)
-        logfire.info(f"Search parameters - time_start: {time_start}, name: {name}, time_end: {time_end}, location: {location}, status: {status}")
+    with logfire.span("Searching Relevant Activities with parameters: time_start={}, time_end={}, location={}, status={}".format(time_start, time_end, location, status)):
+        relevant_activities = await activity_service.search_relevant_activity(time_start=time_start, time_end=time_end, location=location, status=status, top_k=5)
+        logfire.info(f"Search parameters - time_start: {time_start}, time_end: {time_end}, location: {location}, status: {status}")
         logfire.info(f"Found {len(relevant_activities)} relevant activities: {relevant_activities}")
         if len(relevant_activities) == 0:
             return "No relevant activities found based on the provided parameters."
@@ -95,19 +97,19 @@ async def register_activity(ctx: RunContext[AgentConfig],
         logfire.info(f"Registering student_id: {ctx.deps.student_id} for activity: {activity_details.id} with result: {result}")
     return result
 
-async def get_activity_id_by_name(ctx: RunContext[AgentConfig], activity_name: str = Field(..., description="The name of the activity to search for its ID")) -> str:
+async def get_activity_ids_by_name(ctx: RunContext[AgentConfig], activity_name: str = Field(..., description="The name of the activity to search for its ID")) -> str:
     """
     Get the activity ID based on the activity name.
     """
     activity_service = get_activity_service()
     with logfire.span("Getting activity ID for activity name: {}".format(activity_name)):
         activity_details = await activity_service.search_activity_by_name(activity_name)
-        logfire.info(f"Activity name: {activity_name}, Activity ID: {activity_details['id'] if activity_details else 'Not Found'}")
+        logfire.info(f"Top Relevant Activities:{activity_details if activity_details else 'Not Found'}")
     
-    serializable_details = dict(activity_details) if activity_details else None
-    if serializable_details and 'id' in serializable_details:
-        serializable_details['id'] = str(serializable_details['id'])
-    return json.dumps(serializable_details, default=str) if activity_details else "No activity found with the given name."
+    for activity in activity_details:
+        if 'id' in activity:
+            activity['id'] = str(activity['id'])
+    return json.dumps(activity_details, default=str) if activity_details else "No activity found with the given name."
 
 async def unregister_activity(ctx: RunContext[AgentConfig], 
                               activity_id: uuid.UUID = Field(..., description="The ID of the activity the student wants to unregister from")) -> str:

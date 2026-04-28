@@ -89,8 +89,8 @@ class ActivityRepository:
             key=lambda x: x["score"], 
             reverse=True
         )
-        logfire.info(f"RRF computation completed. Sorted results: {sorted_items[0]['data'] if sorted_items else 'No results found'}")
-        return sorted_items[0]['data'] if sorted_items else None
+        logfire.info(f"RRF computation completed. Sorted results: {sorted_items if sorted_items else 'No results found'}")
+        return sorted_items[:5] if sorted_items else None
 
     async def get_activity_details(self, activity_id: uuid.UUID):
         query = """
@@ -102,7 +102,7 @@ class ActivityRepository:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_id)
 
-    async def get_registered_activitys(self, student_id: uuid.UUID):
+    async def get_registered_activities(self, student_id: uuid.UUID):
         query = """
             SELECT a.id, a.name, a.location, a.status, a.description, a.start_time, a.end_time
             FROM activity a

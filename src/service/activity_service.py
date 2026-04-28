@@ -31,9 +31,9 @@ class ActivityService:
         activity_repo = await get_activity_repo()
         return await activity_repo.get_activity_details(activity_id)
     
-    async def get_registered_activitys(self, student_id: uuid.UUID):
+    async def get_registered_activities(self, student_id: uuid.UUID):
         activity_repo = await get_activity_repo()
-        return await activity_repo.get_registered_activitys(student_id)
+        return await activity_repo.get_registered_activities(student_id)
     
     async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
         activity_repo = await get_activity_repo()
