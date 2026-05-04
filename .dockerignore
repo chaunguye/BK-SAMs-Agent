@@ -10,3 +10,13 @@ node_modules
 *.log
 data
 models
+
+.documents/
+
+.venv/
+
+
+.git/
+.gitignore
+node_modules/
+*.log

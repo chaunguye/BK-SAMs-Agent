@@ -36,6 +36,11 @@ class WebsocketManager:
                 payload["tool_call_id"] = tool_call_id
             await websocket.send_json(payload)
 
+    async def send_session_init(self, conversation_id: uuid.UUID, conversation_name: str):
+        websocket = self.connection.get(conversation_id)
+        if websocket:
+            await websocket.send_json({"type": "session_init", "conversation_id": str(conversation_id), "conversation_name": conversation_name})
+
 _websocket_manager = None
 def get_websocket_manager():
     global _websocket_manager

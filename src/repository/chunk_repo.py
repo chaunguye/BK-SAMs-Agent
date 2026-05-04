@@ -1,11 +1,12 @@
 from src.database.database_connect import get_db_pool
 from datetime import datetime
+import logfire
 
 class ChunkRepository:
     def __init__(self, pool):
         self.pool = pool
 
-    async def insert_document(self, id, file_path, file_type, author, file_name, activity_id=None):
+    async def insert_document(self, id, file_path, file_type, author, file_name, activity_id):
         query = """
             INSERT INTO document (id, file_path, file_type, author, file_name, activity_id)
             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
@@ -21,6 +22,12 @@ class ChunkRepository:
         """
         async with self.pool.acquire() as conn:
             await conn.executemany(query, chunks_data)
+
+    async def get_chunks_by_document_id(self, document_id):
+        query = "SELECT id, text_content FROM chunk WHERE document_id = $1"
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, document_id)
+        return [dict(row) for row in rows]
     
     async def search_chunks_by_embedding(self, query_embedding, top_k=5):
         query = """
@@ -31,31 +38,6 @@ class ChunkRepository:
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(query, query_embedding, top_k)
-        return [dict(row) for row in rows]
-
-    async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
-        query = """
-            SELECT *
-            FROM activity
-            WHERE start_time >= COALESCE($1::timestamp, current_date)
-            AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
-            AND ($3::timestamp IS NULL OR end_time <= $3)
-            AND ($4::text IS NULL OR location ILIKE '%' || $4 || '%')
-            AND ($5::activity_status IS NULL OR status = $5::activity_status)
-            ORDER BY {} {}
-            LIMIT $6
-        """
-        order_direction = "DESC" if desc else "ASC"
-        
-        allowed_columns = {"name", "time_start", "location", "number_of_conversion_day"}
-
-        if sort_by not in allowed_columns:
-            sort_by = "number_of_conversion_day"  # default sorting column
-
-        query = query.format(sort_by, order_direction)
-        
-        async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, time_start, name, time_end, location, status, top_k)
         return [dict(row) for row in rows]
     
     async def search_chunks_of_activity(self, query_embedding, activity_id, top_k=5):
@@ -69,8 +51,68 @@ class ChunkRepository:
             LIMIT $3
         """
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(query, query_embedding, str(activity_id), top_k)
+            rows = await conn.fetch(query, query_embedding, activity_id, top_k)
         return [dict(row) for row in rows]
+    
+    async def search_chunks_of_activity_hybrid(self, query_embedding, query_text, activity_id, top_k=5):
+        query = """
+            SELECT id, text_content, embeddings <=> $1::vector AS distance
+            FROM chunk
+            WHERE document_id IN (
+                SELECT id FROM document WHERE activity_id = $2
+            )
+            ORDER BY embeddings <=> $1::vector
+            LIMIT $3
+        """
+        async with self.pool.acquire() as conn:
+            semantic_rows = await conn.fetch(query, query_embedding, activity_id, top_k)
+
+        query = """
+        SELECT id, text_content, 
+            ts_rank_cd(
+                fts_tokens, 
+                websearch_to_tsquery('simple', $2), 
+                32
+            ) AS rank
+        FROM chunk 
+        WHERE document_id IN (
+            SELECT id FROM document WHERE activity_id = $1
+        )
+        AND fts_tokens @@ websearch_to_tsquery('simple', $2)
+        ORDER BY rank DESC 
+        LIMIT $3
+        """
+
+        async with self.pool.acquire() as conn:
+            textual_rows = await conn.fetch(query, activity_id, query_text, top_k)
+
+        return await self.rrf_compute(semantic_rows, textual_rows)
+    
+    async def rrf_compute(self, semantic_rows, textual_rows, k=60):
+        # Create a dictionary to store the best score for each chunk
+        results_map = {}
+        def process_results(records):
+            for rank, record in enumerate(records, start=1):
+                activity_id = record['id']
+                score = 1 / (k + rank)
+                
+                if activity_id not in results_map:
+                    # Store both the score AND the original record data
+                    results_map[activity_id] = {
+                        "score": score,
+                        "data": dict(record) # Convert asyncpg Record to Dict
+                    }
+                else:
+                    results_map[activity_id]["score"] += score
+
+        process_results(semantic_rows)
+        process_results(textual_rows)
+        
+
+        # Sort chunks by their combined RRF scores
+        sorted_chunks = sorted(results_map.values(), key=lambda item: item["score"], reverse=True)
+        logfire.info(f"Sorted chunks: {sorted_chunks}")
+        return sorted_chunks[:5]  # Return top 5 chunks based on RRF scores
 
 _chunk_repo = None
 async def get_chunk_repo():
