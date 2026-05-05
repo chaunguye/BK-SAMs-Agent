@@ -6,6 +6,9 @@ import logfire
 from datetime import datetime
 from google import genai
 from google.genai import types
+import os
+import tempfile
+import boto3
 
 class ChunkService:
     def __init__(self):
@@ -51,25 +54,49 @@ class ChunkService:
         return self._gemini_embedder
 
     async def heavy_processing_pipeline(self, file_path: str):
-        # parsing document
-        with logfire.span("Parsing Document"):
-            doc = self.converter.convert(file_path).document
-            markeddown_text = doc.export_to_markdown()
-
-        # chunking document
-        with logfire.span("Chunking Document"):
-            chunks = self.chunker(markeddown_text)
-            texts = [chunk.text for chunk in chunks]
-
-        with logfire.span("Embedding Document"):
-            # embeddings = self.embedder.encode(texts)
-            embeddings = await self.gemini_embedder.aio.models.embed_content(
-                model="gemini-embedding-2",
-                contents=texts,
-                config=types.EmbedContentConfig(output_dimensionality=768)
+        # If file_path is not a local file, download from S3
+        is_s3 = not os.path.exists(file_path)
+        temp_file = None
+        if is_s3:
+            s3_bucket = os.getenv("AWS_S3_BUCKET")
+            s3_client = boto3.client(
+                "s3",
+                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                region_name=os.getenv("AWS_REGION")
             )
-            format_embeddings = [embedding.values for embedding in embeddings.embeddings]
-        return texts, format_embeddings
+            # file_path is the S3 key
+            temp_fd, temp_path = tempfile.mkstemp(suffix=os.path.splitext(file_path)[1])
+            os.close(temp_fd)
+            with open(temp_path, "wb") as f:
+                s3_client.download_fileobj(s3_bucket, file_path, f)
+            temp_file = temp_path
+        local_path = temp_file if temp_file else file_path
+        try:
+            # parsing document
+            with logfire.span("Parsing Document"):
+                doc = self.converter.convert(local_path).document
+                markeddown_text = doc.export_to_markdown()
+
+            # chunking document
+            with logfire.span("Chunking Document"):
+                chunks = self.chunker(markeddown_text)
+                texts = [chunk.text for chunk in chunks]
+
+            with logfire.span("Embedding Document"):
+                embeddings = await self.gemini_embedder.aio.models.embed_content(
+                    model="gemini-embedding-2",
+                    contents=texts,
+                    config=types.EmbedContentConfig(output_dimensionality=768)
+                )
+                format_embeddings = [embedding.values for embedding in embeddings.embeddings]
+            return texts, format_embeddings
+        finally:
+            if temp_file:
+                try:
+                    os.remove(temp_file)
+                except Exception as e:
+                    logfire.warning(f"Failed to remove temp file {temp_file}: {e}")
 
 
     async def process(self, file_path: str, doc_id: str) -> str:
