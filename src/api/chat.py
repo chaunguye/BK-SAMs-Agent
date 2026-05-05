@@ -65,6 +65,17 @@ async def get_conversation(student_context: StudentContext = Depends(get_student
     ]
     return JSONResponse({"user_type": "student", "conversation": list_json})
 
+@router.delete("/conversation/{conversation_id}")
+async def delete_conversation(conversation_id: uuid.UUID, student_context: StudentContext = Depends(get_student_context)):
+    """This endpoint deletes a conversation based on conversation ID"""
+    if student_context is None:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    converation_service = get_conversation_service()
+    status = await converation_service.delete_conversation(conversation_id, student_context.student_id)
+    if not status:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return JSONResponse({"message": "Conversation deleted successfully"})
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket,
                              token: Optional[str] = None,
@@ -93,6 +104,11 @@ async def websocket_endpoint(websocket: WebSocket,
         logfire.warning(f"Guest try to access to conversation: {conversation_id}")
         await websocket.close(code=1008, reason="Access Denied")
     elif conversation_id is not None and student_context is not None:
+        # Check if the conversation belongs to the student
+        conversation_list = await conversation_service.get_conversation_list(student_context.student_id)
+        if not any(str(conver["id"]) == str(conversation_id) for conver in conversation_list):
+            logfire.warning(f"Student_id: {student_context.student_id} try to access to conversation: {conversation_id} which is not belong to them")
+            await websocket.close(code=1008, reason="Access Denied")
         load_history = True
 
     await websocketManager.connect(conversation_id, websocket)

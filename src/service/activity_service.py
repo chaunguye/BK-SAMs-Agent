@@ -37,9 +37,20 @@ class ActivityService:
     
     async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
         activity_repo = await get_activity_repo()
+
+        if time_start and time_start.tzinfo:
+            time_start = time_start.replace(tzinfo=None)
+        if time_end and time_end.tzinfo:
+            time_end = time_end.replace(tzinfo=None)
+
         with logfire.span("Searching Relevant Activities"):
             results = await activity_repo.search_relevant_activity(time_start, name, time_end, location, status, sort_by, desc, top_k)
-        return results
+
+        columns = ["id", "name", "location", "status", "description", "start_time", "end_time"]
+        return [
+            {col: row.get(col) for col in columns}
+            for row in results
+        ] if results else []
     
 _activity_service = None
 def get_activity_service():
