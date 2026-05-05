@@ -86,6 +86,14 @@ class ConversationRepository:
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, title, user_id)
         
+    async def delete_conversation(self, conversation_id):
+        query = """
+            DELETE FROM conversation
+            WHERE id = $1
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.execute(query, conversation_id)
+        
 
     async def update_conversation_title(self, conversation_id, new_title):
         query = """

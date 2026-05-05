@@ -12,19 +12,62 @@ class ActivityRepository:
     async def register_activity(self, student_id: uuid.UUID, activity_id: str):
         query = """
             INSERT INTO registrations (student_id, activity_id)
-            VALUES ($1, $2) RETURNING id
+            SELECT $1, $2
+            WHERE EXISTS (
+                SELECT max_slots FROM activity WHERE id = $2
+                AND max_slots > (
+                    SELECT COUNT(student_id) FROM registrations WHERE activity_id = $2
+                )
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM blacklist
+                WHERE student_id = $1 AND banned_faculty_id = (SELECT faculty_id FROM activity WHERE id = $2)
+                AND banned_until >= NOW() AND deleted_at IS NULL
+            )
+            RETURNING id
         """
         async with self.pool.acquire() as conn:
-            return await conn.execute(query, student_id, activity_id)
-    
+            result = await conn.fetchrow(query, student_id, activity_id)
+            return result is not None  
+            
+        
+    async def check_availability(self, conn,activity_id: str):
+        query = """
+            SELECT max_slots - COUNT(r.student_id) AS available_slots
+            FROM activity a
+            LEFT JOIN registrations r ON a.id = r.activity_id
+            WHERE a.id = $1
+            GROUP BY a.max_slots
+        """
+        result = await conn.fetchrow(query, activity_id)
+        return result['available_slots'] if result else 0
+        
+    async def check_blacklist(self, conn, student_id: uuid.UUID, activity_id: str):
+        query = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM blacklist
+                WHERE student_id = $1 
+                AND banned_faculty_id = (SELECT faculty_id FROM activity WHERE id = $2)
+                AND banned_until >= NOW() AND deleted_at IS NULL
+            ) AS is_blacklisted
+        """
+        result = await conn.fetchrow(query, student_id, activity_id)
+        return result['is_blacklisted'] if result else False
+
     async def unregister_activity(self, student_id: uuid.UUID, activity_id: str):
         query = """
             DELETE FROM registrations
             WHERE student_id = $1 AND activity_id = $2
+            AND EXISTS (
+                SELECT 1 FROM activity WHERE id = $2 AND start_time > NOW() + INTERVAL '1 day'
+            )
         """
         async with self.pool.acquire() as conn:
             result = await conn.execute(query, student_id, activity_id)
             return result == "DELETE 1"  # Check if one row was deleted
+        
+    
 
     async def get_activity_by_name(self, activity_name: str):
         query = """

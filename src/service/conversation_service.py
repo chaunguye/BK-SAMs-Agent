@@ -81,7 +81,7 @@ class ConversationService:
                 summary, recent = await summarize_conversation(current_summary_record_text, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
                 logfire.info(f"Summary result for conversation_id: {conversation_id}: {summary}")
 
-                json_summary = jsonable_encoder(summary.model_dump(mode='json')) if summary else None
+                json_summary = jsonable_encoder(summary.model_dump(mode='json') if hasattr(summary, 'model_dump') else summary) if summary else None
                 await conversation_repo.update_conversation_summary(conversation_id, json.dumps(json_summary))
                 logfire.info(f"Updated conversation summary in database for conversation_id: {conversation_id}")
                 update_ids = [message['id'] for message in un_summarized_messages[:-self.latest]]
@@ -121,6 +121,15 @@ class ConversationService:
     async def update_title(self, conversation_id, new_title):
         conversation_repo = await get_conversation_repo()
         await conversation_repo.update_conversation_title(conversation_id, new_title)
+
+    async def delete_conversation(self, conversation_id, user_id):
+        conversation_repo = await get_conversation_repo()
+        conversation_list = await conversation_repo.get_conversation_list(user_id)
+        if not any(conv['id'] == conversation_id for conv in conversation_list):
+            logfire.warning(f"User {user_id} attempted to delete conversation {conversation_id} which they do not have access to.")
+            return False  # User does not have access to this conversation
+        await conversation_repo.delete_conversation(conversation_id)
+        return True  # Successfully deleted
 
 _conversation_service = None
 def get_conversation_service():
