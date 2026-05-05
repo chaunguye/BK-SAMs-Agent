@@ -3,7 +3,7 @@ from google.genai import types
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from fastapi import UploadFile, BackgroundTasks, HTTPException
-import aiofiles
+import boto3
 import uuid
 from src.service.chunk_service import get_chunk_service
 from src.repository.chunk_repo import get_chunk_repo
@@ -28,21 +28,28 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
     if suffix not in [".docx", ".pdf"]:
         raise HTTPException(status_code=400, detail="Only .docx and .pdf files are supported.")
     
-    # Generate unique document ID and file path
-    doc_id = str(uuid.uuid4())
-    file_path = f"documents/{doc_id}_{file.filename}"
-    
-    # Save file locally
-    async with aiofiles.open(file_path, "wb") as f:
-        await f.write(await file.read())
 
-    # Insert document to database
+    # Generate unique document ID and S3 key
+    doc_id = str(uuid.uuid4())
+    s3_key = f"documents/{doc_id}_{file.filename}"
+
+    # Upload file to S3
+    s3_bucket = os.getenv("AWS_S3_BUCKET")
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.getenv("AWS_REGION")
+    )
+    file_content = await file.read()
+    s3_client.put_object(Bucket=s3_bucket, Key=s3_key, Body=file_content)
+
+    # Insert document to database (store S3 key as file path)
     chunkRepo = await get_chunk_repo()
-    await chunkRepo.insert_document(doc_id, file_path, suffix, student_context.student_name, file.filename, activity_id)
+    await chunkRepo.insert_document(doc_id, s3_key, suffix, student_context.student_name, file.filename, activity_id)
 
     # Process document in background (Parsing, chunking, embedding, storing chunks)
-    
-    background_tasks.add_task(get_chunk_service().process, file_path, doc_id)
+    background_tasks.add_task(get_chunk_service().process, s3_key, doc_id)
 
     if activity_id is not None:
         activity_repo = await get_activity_repo()
