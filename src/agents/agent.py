@@ -42,9 +42,9 @@ def add_user_name(ctx: RunContext[AgentConfig]) -> str:
     context = ""
     if ctx.deps and ctx.deps.student_id:
         context += "This is an authenticated student."
-        context + f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else context + "The student's name is not provided."
+        context += f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else context + "The student's name is not provided."
     else:
-            context += "This is a guest . No student information is available. Guest can not register or unregister activities, but can view activity details and search for relevant activities. Please block any attempts to register or unregister activities and respond with an appropriate message indicating that the user is not authenticated."
+        context += "This is a guest . No student information is available. Guest can not register or unregister activities, but can view activity details and search for relevant activities. Please block any attempts to register or unregister activities and respond with an appropriate message indicating that the user is not authenticated."
     return context
 
 @capstone_agent.instructions
