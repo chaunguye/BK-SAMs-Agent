@@ -63,7 +63,7 @@ class ConversationRepository:
             query = """
                 UPDATE message
                 SET summarized = TRUE
-                WHERE id = ANY($1::int[])
+                WHERE id = ANY($1::uuid[])
             """
             async with self.pool.acquire() as conn:
                 return await conn.execute(query, message_ids)
