@@ -140,6 +140,8 @@ class ConversationRepository:
             #     texts.append(f"[Tool Call: {part.tool_name}]")
             elif isinstance(part, UserPromptPart):
                 texts.append(part.content)
+        if not texts:
+            return None
         return "\n".join(texts)
     
     # async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
