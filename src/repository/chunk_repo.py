@@ -113,6 +113,32 @@ class ChunkRepository:
         sorted_chunks = sorted(results_map.values(), key=lambda item: item["score"], reverse=True)
         logfire.info(f"Sorted chunks: {sorted_chunks}")
         return sorted_chunks[:5]  # Return top 5 chunks based on RRF scores
+    
+    async def get_document_by_activity_id(self, activity_id):
+        query = """
+            SELECT id, file_name, file_path, file_type, author, created_at, updated_at FROM document WHERE activity_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(query, activity_id)
+        return dict(row) if row else None
+    
+    async def delete_document_by_activity_id(self, activity_id):
+        query = """
+            DELETE FROM document WHERE activity_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(query, activity_id)
+    
+    async def delete_chunks_by_document_id(self, document_id):
+        query = """
+            DELETE FROM chunk WHERE document_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(query, document_id)
+
+    async def update_document_by_activity_id(self, activity_id, file_path, file_type, author, file_name):
+        pass
+        # To be implemented: Update document record and re-process the document (delete old chunks, insert new chunks)
 
 _chunk_repo = None
 async def get_chunk_repo():

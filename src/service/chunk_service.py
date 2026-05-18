@@ -154,6 +154,40 @@ class ChunkService:
                 "chunker": self._chunker is not None, 
                 "embedder": self._embedder is not None}
     
+    async def get_document(self, activity_id: uuid.UUID):
+        chunkRepo = await get_chunk_repo()
+        return await chunkRepo.get_document_by_activity_id(activity_id)
+    
+    async def get_document_by_activity_id(self, activity_id: uuid.UUID):
+        chunkRepo = await get_chunk_repo()
+        document = await chunkRepo.get_document_by_activity_id(activity_id)
+
+        s3_bucket = os.getenv("AWS_S3_BUCKET")
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION")
+        )
+        file_size = s3_client.head_object(Bucket=s3_bucket, Key=document["file_path"])["ContentLength"]
+        document["file_size"] = round(file_size / (1024 * 1024), 2) # Convert to MB
+        return document
+    
+    async def delete_document_by_activity_id(self, activity_id: uuid.UUID):
+        chunkRepo = await get_chunk_repo()
+        document = await chunkRepo.get_document_by_activity_id(activity_id)
+
+        s3_bucket = os.getenv("AWS_S3_BUCKET")
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION")
+        )
+        s3_client.delete_object(Bucket=s3_bucket, Key=document["file_path"])
+        await chunkRepo.delete_chunks_by_document_id(document["id"])
+        await chunkRepo.delete_document_by_activity_id(activity_id)
+
 _chunk_service = None
 def get_chunk_service():
     global _chunk_service

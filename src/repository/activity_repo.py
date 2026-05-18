@@ -188,7 +188,15 @@ class ActivityRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_id)
-        
+    
+    async def get_activities_by_user_id(self, user_id: uuid.UUID):
+        query = """
+            SELECT activity_id FROM registrations WHERE student_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id)
+        return [row["activity_id"] for row in rows]
+
     async def update_activity_embedding(self, activity_id: uuid.UUID, embedding: List):
         query = """
             UPDATE activity

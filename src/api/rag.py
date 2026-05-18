@@ -69,6 +69,20 @@ async def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
 
     return JSONResponse({"status": "parsed", "filename": file.filename, "document_id": doc_id})
 
+@router.get("")
+async def get_uploaded_document(activity_id: str):
+    chunkService = get_chunk_service()
+    document = await chunkService.get_document_by_activity_id(activity_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return JSONResponse({"file_name": document["file_name"], "file_type": document["file_type"], "author": document["author"], "created_at": str(document["created_at"]), "updated_at": str(document["updated_at"]), "file_size": document["file_size"]})
+
+@router.delete("")
+async def delete_uploaded_document(activity_id: str):
+    chunk_service = get_chunk_service()
+    await chunk_service.delete_document_by_activity_id(activity_id)
+    return JSONResponse({"status": "deleted"})
+
 @router.get("/activity")
 async def get_activity(activity_id: str):
     activity_repo = await get_activity_repo()
@@ -88,7 +102,6 @@ async def get_activity(activity_id: str):
         await activity_repo.update_activity_embedding(activity_id, activity_embedding.embeddings[0].values)
 
     return JSONResponse({"status": "success", "activity": activity_string})
-
 
 @router.get("/dataset")
 async def get_dataset():
