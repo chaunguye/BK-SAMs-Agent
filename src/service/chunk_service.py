@@ -162,6 +162,9 @@ class ChunkService:
         chunkRepo = await get_chunk_repo()
         document = await chunkRepo.get_document_by_activity_id(activity_id)
 
+        if document is None:
+            return None
+
         s3_bucket = os.getenv("AWS_S3_BUCKET")
         s3_client = boto3.client(
             "s3",
