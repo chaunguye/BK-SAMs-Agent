@@ -29,7 +29,7 @@ import datetime
 from pydantic import TypeAdapter
 from pydantic_ai.messages import ModelMessage
 from src.util.filter_history import name_conversation
-import pytz
+# import pytz
 
 router = APIRouter(prefix="/chat", tags=["Agent Chat"])
 

@@ -22,7 +22,8 @@ class ConversationRepository:
             data_to_insert.append((sender_type, text_content, conversation_id, json.dumps(metadata)))
             
         async with self.pool.acquire() as conn:
-            return await conn.executemany(query, data_to_insert)
+            for record in data_to_insert:
+                await conn.execute(query, *record)
 
     async def get_conversation(self, conversation_id):
         query = """

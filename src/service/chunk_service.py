@@ -9,35 +9,14 @@ from google.genai import types
 import os
 import tempfile
 import boto3
+import pymupdf4llm
+from docx import Document
 
 class ChunkService:
     def __init__(self):
-        self._converter = None
         self._chunker = None
         self._gemini_embedder = None
     
-    @property
-    def converter(self):
-        if self._converter is None:
-            from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
-            
-            pipeline_options = PdfPipelineOptions()
-            # Disable OCR (only works if PDFs are digital, not scanned)
-            pipeline_options.do_ocr = False 
-            # Use a faster, simpler table model
-            pipeline_options.do_table_structure = False
-
-            with logfire.span("Initializing Document Converter"):
-                self._converter = DocumentConverter(
-                    format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=pipeline_options
-                    )
-                }
-                )
-        return self._converter
-
     @property
     def chunker(self):
         if self._chunker is None:
@@ -52,6 +31,21 @@ class ChunkService:
             with logfire.span("Initializing Gemini Embedder"):
                 self._gemini_embedder = genai.Client()
         return self._gemini_embedder
+
+    async def _parse_document(self, local_path: str) -> str:
+        """Parses the document into markdown format based on its extension."""
+        ext = os.path.splitext(local_path)[1].lower()
+        if ext == ".pdf":
+            # import pymupdf4llm
+            with logfire.span("Parsing PDF with PyMuPDF4LLM"):
+                return pymupdf4llm.to_markdown(local_path)
+        elif ext == ".docx":
+            # from docx import Document
+            with logfire.span("Parsing DOCX with python-docx"):
+                doc = Document(local_path)
+                return "\n\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")
 
     async def heavy_processing_pipeline(self, file_path: str):
         # If file_path is not a local file, download from S3
@@ -74,9 +68,7 @@ class ChunkService:
         local_path = temp_file if temp_file else file_path
         try:
             # parsing document
-            with logfire.span("Parsing Document"):
-                doc = self.converter.convert(local_path).document
-                markeddown_text = doc.export_to_markdown()
+            markeddown_text = await self._parse_document(local_path)
 
             # chunking document
             with logfire.span("Chunking Document"):
@@ -150,9 +142,8 @@ class ChunkService:
         return results
     
     async def healthy_check(self):
-        return {"converter": self._converter is not None, 
-                "chunker": self._chunker is not None, 
-                "embedder": self._embedder is not None}
+        return {"chunker": self._chunker is not None, 
+                "embedder": self._gemini_embedder is not None}
     
     async def get_document(self, activity_id: uuid.UUID):
         chunkRepo = await get_chunk_repo()
