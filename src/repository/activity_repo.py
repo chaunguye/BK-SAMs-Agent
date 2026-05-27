@@ -157,12 +157,12 @@ class ActivityRepository:
         
     async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):
         query = """
-            SELECT *
+            SELECT *, similarity(name::text, $2) as name_similarity, similarity(location::text, $4) as location_similarity
             FROM activity
             WHERE start_time >= COALESCE($1::timestamp, current_date)
-            AND ($2::text IS NULL OR name ILIKE '%' || $2 || '%')
+            AND ($2::text IS NULL OR name % $2)
             AND ($3::timestamp IS NULL OR end_time <= $3)
-            AND ($4::text IS NULL OR location ILIKE '%' || $4 || '%')
+            AND ($4::text IS NULL OR location % $4)
             AND ($5::activity_status IS NULL OR status = $5::activity_status)
             ORDER BY {} {}
             LIMIT $6
@@ -173,6 +173,13 @@ class ActivityRepository:
 
         if sort_by not in allowed_columns:
             sort_by = "number_of_conversion_day"  # default sorting column
+        else:
+            if name:
+                sort_by = "name_similarity"
+            elif location:
+                sort_by = "location_similarity"
+            else:
+                sort_by = "number_of_conversion_day"
 
         query = query.format(sort_by, order_direction)
         

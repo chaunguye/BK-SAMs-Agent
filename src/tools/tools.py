@@ -56,7 +56,7 @@ async def search_relevant_activities(ctx: RunContext[AgentConfig],
                                     time_start: datetime = Field(default=None, description="The start time of the activity (format: YYYY-MM-DD)"),
                                     time_end: datetime = Field(default=None, description="The end time of the activity (format: YYYY-MM-DD)"),
                                     location: str = Field(default=None, description="The location of the activity"),
-                                    status: ActivityStatus = Field(default=None, description="The status of the activity")) -> str:
+                                    status: ActivityStatus = Field(default=ActivityStatus.OPEN, description="The status of the activity")) -> str:
     """
     Search for relevant activities based on activity name, time range, location, and status.
     """
