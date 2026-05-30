@@ -22,7 +22,7 @@ async def live_deps():
     return AgentConfig(
         chunk_service=chunk_service,
         activity_service=activity_service,
-        student_id="test-student-id",      # Replace with a real test user ID if needed
+        student_id="550e8400-e29b-41d4-a716-446655440000",      # Valid UUID string
         student_name="Test Student"
     )
 

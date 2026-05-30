@@ -2,6 +2,7 @@ import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.tools import DeferredToolRequests
 import uuid
+import json
 
 # =================================================================
 # INSTRUCTIONS FOR WRITING END-TO-END TESTS:
@@ -12,14 +13,47 @@ import uuid
 # 4. Assert tool names or actual text output.
 # =================================================================
 
+import pytest_asyncio
+
 def get_tool_calls(result):
     """Helper to extract all tool calls made by the LLM in a run."""
-    return [
-        part for msg in result.all_messages() 
-        if isinstance(msg, ModelResponse) 
-        for part in msg.parts 
-        if isinstance(part, ToolCallPart)
-    ]
+    calls = []
+    for msg in result.all_messages():
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart):
+                    # Ensure args is a dict
+                    if isinstance(part.args, str):
+                        try:
+                            part.args = json.loads(part.args)
+                        except:
+                            pass
+                    calls.append(part)
+    return calls
+
+@pytest_asyncio.fixture(autouse=True)
+async def reset_singletons():
+    """Reset singletons to avoid 'Event loop is closed' issues in tests."""
+    import src.database.database_connect as db_conn
+    import src.repository.activity_repo as act_repo
+    import src.service.activity_service as act_serv
+    import src.service.chunk_service as chunk_serv
+    
+    # Close pool if it exists and loop is open
+    if db_conn._pool is not None:
+        try:
+            # Only try to close if the loop is still running
+            import asyncio
+            if not db_conn._pool._loop.is_closed():
+                await db_conn._pool.close()
+        except:
+            pass
+        db_conn._pool = None
+    
+    # Reset singletons
+    act_repo._activity_repo = None
+    act_serv._activity_service = None
+    chunk_serv._chunk_service = None
 
 @pytest.mark.asyncio
 async def test_ut_01_discovery_dian(real_agent, live_deps):
@@ -38,8 +72,12 @@ async def test_ut_01_discovery_dian(real_agent, live_deps):
     relevant_call = [c for c in tool_calls if c.tool_name == "search_relevant_activities"][0]
     
     # Assert LLM extracted 'Dĩ An' and 'OPEN' status
-    assert "Dĩ An" in str(relevant_call.args.get("location"))
-    assert relevant_call.args.get("status") == "OPEN"
+    args = relevant_call.args
+    location = args.get("location") if isinstance(args, dict) else ""
+    status = args.get("status") if isinstance(args, dict) else ""
+    
+    assert "Dĩ An" in str(location)
+    assert status == "OPEN"
 
 @pytest.mark.asyncio
 async def test_ut_03_unique_match_details(real_agent, live_deps):

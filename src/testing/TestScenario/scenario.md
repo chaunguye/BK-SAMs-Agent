@@ -12,7 +12,7 @@
 
 * **User Query:** Mình muốn tìm hoạt động nào diễn ra ở Cơ sở Dĩ An trong tháng này.
 * **Expected Tool Call:** `search_relevant_activities`
-* **Args:** `{"time_start": "2026-05-01T00:00:00Z", "time_end": "2026-05-31T23:59:59Z", "location": "Cơ sở Dĩ An"}`
+* **Args:** `{"time_start": time_stamp contain "2026-05-27", "time_end": time_stamp contain "2026-05-31", "location": "Cơ sở Dĩ An"}`
 
 
 ---
