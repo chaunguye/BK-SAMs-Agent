@@ -1,3 +1,5 @@
+import json
+
 from pydantic_ai import Agent, ModelMessage, SystemPromptPart, ModelRequest, ToolReturnPart
 
 summary_agent = Agent('groq:meta-llama/llama-4-scout-17b-16e-instruct', instructions="""
@@ -6,10 +8,12 @@ summary_agent = Agent('groq:meta-llama/llama-4-scout-17b-16e-instruct', instruct
         * naming conversations
     """)
 
-async def summarize_conversation(current_summary: str, messages: list[ModelMessage], latest = 5) -> list[ModelMessage]:
+async def summarize_conversation(current_summary: ModelMessage | None, messages: list[ModelMessage], latest = 5) -> tuple[ModelMessage, list[ModelMessage]]:
     if len(messages) <= latest:
-        return [], messages
-    
+        if current_summary is None:
+            return None, messages
+        return current_summary, messages
+
     actual_latest = latest
     while actual_latest < len(messages):
         first_recent_msg = messages[-actual_latest]
@@ -25,7 +29,11 @@ async def summarize_conversation(current_summary: str, messages: list[ModelMessa
 
     recent_messages = messages[-actual_latest:]
     old_messages = messages[:-actual_latest]
-    summary = await summary_agent.run(f"Summarize this conversation, omitting small talk and unrelated topics. Focus on the technical discussion and next steps. The current summary of the conversation is: {current_summary}\n\nThe messages need to be summarizedare: {old_messages}\n\nPlease provide an updated summary of the conversation based on the current summary and the new messages.")
+
+    current_summary_record_json = json.loads(current_summary) if current_summary else None
+    current_summary_record_text = current_summary_record_json.parts[0].content if current_summary_record_json else ""
+    
+    summary = await summary_agent.run(f"Summarize this conversation, omitting small talk and unrelated topics. Focus on the technical discussion and next steps. The current summary of the conversation is: {current_summary_record_text}\n\nThe messages need to be summarizedare: {old_messages}\n\nPlease provide an updated summary of the conversation based on the current summary and the new messages.")
     summary_message = ModelRequest(
         parts=[
             SystemPromptPart(
@@ -33,6 +41,8 @@ async def summarize_conversation(current_summary: str, messages: list[ModelMessa
             )
         ]
     )
+    print(f"Summary result: {summary.output}")
+    print(f"summary type: {type(summary)}")
     return summary_message, recent_messages
 
 async def name_conversation(messages: list[ModelMessage]) -> str:

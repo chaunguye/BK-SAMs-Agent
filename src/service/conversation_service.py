@@ -75,10 +75,7 @@ class ConversationService:
                 #Get current summary bỏ vào để update lại summary
                 current_summary_record = await conversation_repo.get_conversation_summary(conversation_id)
 
-                current_summary_record_json = json.loads(current_summary_record) if current_summary_record else None
-                current_summary_record_text = current_summary_record_json.parts[0].content if current_summary_record_json else ""
-
-                summary, recent = await summarize_conversation(current_summary_record_text, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
+                summary, recent = await summarize_conversation(current_summary_record, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
                 logfire.info(f"Summary result for conversation_id: {conversation_id}: {summary}")
 
                 json_summary = jsonable_encoder(summary.model_dump(mode='json') if hasattr(summary, 'model_dump') else summary) if summary else None
