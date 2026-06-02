@@ -2,6 +2,7 @@ from pydantic_ai import Agent, RunContext, DeferredToolRequests, Tool
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic import Field
 from datetime import datetime
@@ -14,7 +15,8 @@ load_dotenv()
 
 
 primary_model = GroqModel('openai/gpt-oss-120b')
-secondary_model = GroqModel('qwen/qwen3-32b')
+# secondary_model = GroqModel('qwen/qwen3-32b')
+secondary_model = GoogleModel('gemini-flash-3.1-flash-lite')
 fallback_model = FallbackModel(primary_model, secondary_model)
 
 capstone_agent = Agent(fallback_model, 
