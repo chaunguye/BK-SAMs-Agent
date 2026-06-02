@@ -110,6 +110,7 @@ class ConversationRepository:
             SELECT id, title 
             FROM conversation
             WHERE user_id = $1
+            ORDER BY created_at DESC
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, student_id)
