@@ -11,7 +11,7 @@ class ActivityService:
 
         registered_activities = await activity_repo.get_activities_by_user_id(student_id)
 
-        if str(activity_id) in registered_activities:
+        if activity_id in registered_activities:
             return f"Student is already registered for activity {activity_id}."
         
         success = await activity_repo.register_activity(student_id, activity_id)
@@ -22,7 +22,7 @@ class ActivityService:
 
         registered_activities = await activity_repo.get_activities_by_user_id(student_id)
 
-        if not str(activity_id) in registered_activities:
+        if activity_id not in registered_activities:
             return f"Can not cancel because Student is not registered for activity {activity_id}."
         
         success = await activity_repo.unregister_activity(student_id, activity_id)

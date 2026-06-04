@@ -177,6 +177,7 @@ async def websocket_endpoint(websocket: WebSocket,
                 approval_result = DeferredToolResults()
                 for approval in approval_response:
                     approval_result.approvals[approval['tool_call_id']] = approval['confirm']
+                require_approval = (False, None)
             
             if approval_result is None and require_approval[0] == True:
                 approval_result = DeferredToolResults()
@@ -214,6 +215,7 @@ async def websocket_endpoint(websocket: WebSocket,
 
                     else:
                         await websocketManager.send_personal_message(conversation_id, f"Final result: {event}", type="end")
+                        require_approval = (False, None)
 
                     message = event.result.new_messages()
                     if student_context:
