@@ -16,8 +16,8 @@ load_dotenv()
 class ConversationService:
     def __init__(self):
         self.messages_adapter = TypeAdapter(list[ModelMessage])
-        self.latest = 5
-        self.max_history = 10
+        self.latest = 3
+        self.max_history = 6
     async def get_conversation(self, conversation_id):
         with logfire.span("Get cache mananger instance"):
             cache = get_cache_manager()
@@ -75,10 +75,7 @@ class ConversationService:
                 #Get current summary bỏ vào để update lại summary
                 current_summary_record = await conversation_repo.get_conversation_summary(conversation_id)
 
-                current_summary_record_json = json.loads(current_summary_record) if current_summary_record else None
-                current_summary_record_text = current_summary_record_json.parts[0].content if current_summary_record_json else ""
-
-                summary, recent = await summarize_conversation(current_summary_record_text, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
+                summary, recent = await summarize_conversation(current_summary_record, [json.loads(message['raw_message']) for message in un_summarized_messages], self.latest)
                 logfire.info(f"Summary result for conversation_id: {conversation_id}: {summary}")
 
                 json_summary = jsonable_encoder(summary.model_dump(mode='json') if hasattr(summary, 'model_dump') else summary) if summary else None
@@ -89,7 +86,7 @@ class ConversationService:
                 await conversation_repo.mark_messages_as_summarized(conversation_id, update_ids)
                 logfire.info(f"Marking {len(update_ids)} messages as summarized for conversation_id: {conversation_id}. Message IDs: {update_ids}")
             
-            serialized_history = jsonable_encoder([message.model_dump(mode='json') if hasattr(message, 'model_dump') else message for message in summary + recent])
+            serialized_history = jsonable_encoder([message.model_dump(mode='json') if hasattr(message, 'model_dump') else message for message in [summary] + recent])
             await cache.set_cache(str(conversation_id), json.dumps(serialized_history))
 
 

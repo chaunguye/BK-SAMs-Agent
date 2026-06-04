@@ -17,12 +17,18 @@ class ConversationRepository:
         for data in conversation_data:
             sender_type = self._get_role(data)
             text_content = self._extract_content(data)
+            
+            # Skip saving messages with no text content (e.g., empty UserPromptPart from tool processing)
+            if text_content is None or (isinstance(text_content, str) and not text_content.strip()):
+                continue
+            
             # metadata = data.model_dump_json() if hasattr(data, 'model_dump_json') else jsonable_encoder(data)
             metadata = jsonable_encoder(data.model_dump(mode='json') if hasattr(data, 'model_dump') else data)
             data_to_insert.append((sender_type, text_content, conversation_id, json.dumps(metadata)))
             
         async with self.pool.acquire() as conn:
-            return await conn.executemany(query, data_to_insert)
+            for record in data_to_insert:
+                await conn.execute(query, *record)
 
     async def get_conversation(self, conversation_id):
         query = """
@@ -63,7 +69,7 @@ class ConversationRepository:
             query = """
                 UPDATE message
                 SET summarized = TRUE
-                WHERE id = ANY($1::int[])
+                WHERE id = ANY($1::uuid[])
             """
             async with self.pool.acquire() as conn:
                 return await conn.execute(query, message_ids)
@@ -109,6 +115,7 @@ class ConversationRepository:
             SELECT id, title 
             FROM conversation
             WHERE user_id = $1
+            ORDER BY created_at DESC
         """
         async with self.pool.acquire() as conn:
             return await conn.fetch(query, student_id)
@@ -139,7 +146,12 @@ class ConversationRepository:
             #     # We might want to store that a tool was called in the content
             #     texts.append(f"[Tool Call: {part.tool_name}]")
             elif isinstance(part, UserPromptPart):
-                texts.append(part.content)
+                # Filter out empty UserPromptPart created by pydantic-ai when processing deferred tool results
+                # These are internal pydantic-ai messages and should not be persisted as user content
+                if part.content and part.content.strip():
+                    texts.append(part.content)
+        if not texts:
+            return None
         return "\n".join(texts)
     
     # async def search_relevant_activity(self, time_start: datetime = None, name: str = None, time_end: datetime = None, location: str = None, status: str = None, sort_by: str = "number_of_conversion_day", desc: bool = True, top_k: int = 5):

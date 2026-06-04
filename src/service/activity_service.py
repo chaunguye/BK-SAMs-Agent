@@ -8,15 +8,26 @@ from src.service.chunk_service import get_chunk_service
 class ActivityService:
     async def register_activity(self, student_id: uuid.UUID, activity_id: uuid.UUID) -> str:
         activity_repo = await get_activity_repo()
+
+        registered_activities = await activity_repo.get_activities_by_user_id(student_id)
+
+        if str(activity_id) in registered_activities:
+            return f"Student is already registered for activity {activity_id}."
         
         success = await activity_repo.register_activity(student_id, activity_id)
         return f"Successfully registered for activity {activity_id}." if success else f"Failed to register for activity {activity_id}."
     
     async def unregister_activity(self, student_id: uuid.UUID, activity_id: uuid.UUID) -> str:
         activity_repo = await get_activity_repo()
+
+        registered_activities = await activity_repo.get_activities_by_user_id(student_id)
+
+        if not str(activity_id) in registered_activities:
+            return f"Can not cancel because Student is not registered for activity {activity_id}."
         
         success = await activity_repo.unregister_activity(student_id, activity_id)
-        return f"Successfully unregistered from activity {activity_id}." if success else f"Failed to unregister from activity {activity_id}."
+        return f"Successfully unregistered from activity {activity_id}." if success else f"Failed to unregister from activity {activity_id}. Cancel registration must be done at least 24 hours before the activity starts, and you must be currently registered for the activity."
+    
     async def search_activity_by_name(self, activity_name: str):
         activity_repo = await get_activity_repo()
         # return await activity_repo.get_activity_by_name(activity_name)

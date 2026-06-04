@@ -2,6 +2,7 @@ from pydantic_ai import Agent, RunContext, DeferredToolRequests, Tool
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic import Field
 from datetime import datetime
@@ -14,10 +15,12 @@ load_dotenv()
 
 
 primary_model = GroqModel('openai/gpt-oss-120b')
-secondary_model = GroqModel('qwen/qwen3-32b')
+# secondary_model = GroqModel('qwen/qwen3-32b')
+secondary_model = GoogleModel('gemini-flash-3.1-flash-lite')
 fallback_model = FallbackModel(primary_model, secondary_model)
 
-capstone_agent = Agent(fallback_model, 
+capstone_agent = Agent(
+                       model = fallback_model, 
                        deps_type = AgentConfig, 
                        output_type=[str, DeferredToolRequests],
                        tools = [search_chunks, 
@@ -42,9 +45,9 @@ def add_user_name(ctx: RunContext[AgentConfig]) -> str:
     context = ""
     if ctx.deps and ctx.deps.student_id:
         context += "This is an authenticated student."
-        context + f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else context + "The student's name is not provided."
+        context += f"The student's name is {ctx.deps.student_name}" if ctx.deps and ctx.deps.student_name else context + "The student's name is not provided."
     else:
-            context += "This is a guest . No student information is available. Guest can not register or unregister activities, but can view activity details and search for relevant activities. Please block any attempts to register or unregister activities and respond with an appropriate message indicating that the user is not authenticated."
+        context += "This is a guest . No student information is available. Guest can not register or unregister activities, but can view activity details and search for relevant activities. Please block any attempts to register or unregister activities and respond with an appropriate message indicating that the user is not authenticated."
     return context
 
 @capstone_agent.instructions
@@ -52,8 +55,6 @@ def add_current_time() -> str:
     return f"The current date and time is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
 
 
-capstone_agent.model = primary_model
-
-app = capstone_agent.to_web()
+# app = capstone_agent.to_web()
 
 

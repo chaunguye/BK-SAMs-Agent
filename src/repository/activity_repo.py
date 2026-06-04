@@ -9,7 +9,7 @@ class ActivityRepository:
     def __init__(self, pool):
         self.pool = pool
 
-    async def register_activity(self, student_id: uuid.UUID, activity_id: str):
+    async def register_activity(self, student_id: uuid.UUID, activity_id: uuid.UUID):
         query = """
             INSERT INTO registrations (student_id, activity_id)
             SELECT $1, $2
@@ -31,7 +31,7 @@ class ActivityRepository:
             return result is not None  
             
         
-    async def check_availability(self, conn,activity_id: str):
+    async def check_availability(self, conn, activity_id: uuid.UUID):
         query = """
             SELECT max_slots - COUNT(r.student_id) AS available_slots
             FROM activity a
@@ -42,7 +42,7 @@ class ActivityRepository:
         result = await conn.fetchrow(query, activity_id)
         return result['available_slots'] if result else 0
         
-    async def check_blacklist(self, conn, student_id: uuid.UUID, activity_id: str):
+    async def check_blacklist(self, conn, student_id: uuid.UUID, activity_id: uuid.UUID):
         query = """
             SELECT EXISTS (
                 SELECT 1
@@ -55,7 +55,7 @@ class ActivityRepository:
         result = await conn.fetchrow(query, student_id, activity_id)
         return result['is_blacklisted'] if result else False
 
-    async def unregister_activity(self, student_id: uuid.UUID, activity_id: str):
+    async def unregister_activity(self, student_id: uuid.UUID, activity_id: uuid.UUID):
         query = """
             DELETE FROM registrations
             WHERE student_id = $1 AND activity_id = $2
@@ -188,7 +188,15 @@ class ActivityRepository:
         """
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(query, activity_id)
-        
+    
+    async def get_activities_by_user_id(self, user_id: uuid.UUID):
+        query = """
+            SELECT activity_id FROM registrations WHERE student_id = $1
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(query, user_id)
+        return [row["activity_id"] for row in rows]
+
     async def update_activity_embedding(self, activity_id: uuid.UUID, embedding: List):
         query = """
             UPDATE activity

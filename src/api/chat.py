@@ -29,7 +29,7 @@ import datetime
 from pydantic import TypeAdapter
 from pydantic_ai.messages import ModelMessage
 from src.util.filter_history import name_conversation
-import pytz
+# import pytz
 
 router = APIRouter(prefix="/chat", tags=["Agent Chat"])
 
@@ -84,6 +84,15 @@ async def websocket_endpoint(websocket: WebSocket,
     conversation_service = get_conversation_service()
     student_context = get_student_context_by_token(token) if token else None
     load_history = False
+
+    # Ensure conversation_id is always a uuid.UUID
+    if conversation_id is not None and not isinstance(conversation_id, uuid.UUID):
+        try:
+            conversation_id = uuid.UUID(str(conversation_id))
+        except Exception as e:
+            logfire.error(f"Invalid conversation_id format: {conversation_id}, error: {e}")
+            await websocket.close(code=1008, reason="Invalid conversation ID")
+            return
 
     is_new_conversation = False
     first_message = f"Xin chào, {student_context.student_name}" if student_context else "Xin chào bạn!"

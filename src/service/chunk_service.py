@@ -6,35 +6,17 @@ import logfire
 from datetime import datetime
 from google import genai
 from google.genai import types
+import os
+import tempfile
+import boto3
+import pymupdf4llm
+from docx import Document
 
 class ChunkService:
     def __init__(self):
-        self._converter = None
         self._chunker = None
         self._gemini_embedder = None
     
-    @property
-    def converter(self):
-        if self._converter is None:
-            from docling.document_converter import DocumentConverter, InputFormat, PdfFormatOption
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
-            
-            pipeline_options = PdfPipelineOptions()
-            # Disable OCR (only works if PDFs are digital, not scanned)
-            pipeline_options.do_ocr = False 
-            # Use a faster, simpler table model
-            pipeline_options.do_table_structure = False
-
-            with logfire.span("Initializing Document Converter"):
-                self._converter = DocumentConverter(
-                    format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=pipeline_options
-                    )
-                }
-                )
-        return self._converter
-
     @property
     def chunker(self):
         if self._chunker is None:
@@ -50,26 +32,63 @@ class ChunkService:
                 self._gemini_embedder = genai.Client()
         return self._gemini_embedder
 
+    async def _parse_document(self, local_path: str) -> str:
+        """Parses the document into markdown format based on its extension."""
+        ext = os.path.splitext(local_path)[1].lower()
+        if ext == ".pdf":
+            # import pymupdf4llm
+            with logfire.span("Parsing PDF with PyMuPDF4LLM"):
+                return pymupdf4llm.to_markdown(local_path)
+        elif ext == ".docx":
+            # from docx import Document
+            with logfire.span("Parsing DOCX with python-docx"):
+                doc = Document(local_path)
+                return "\n\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")
+
     async def heavy_processing_pipeline(self, file_path: str):
-        # parsing document
-        with logfire.span("Parsing Document"):
-            doc = self.converter.convert(file_path).document
-            markeddown_text = doc.export_to_markdown()
-
-        # chunking document
-        with logfire.span("Chunking Document"):
-            chunks = self.chunker(markeddown_text)
-            texts = [chunk.text for chunk in chunks]
-
-        with logfire.span("Embedding Document"):
-            # embeddings = self.embedder.encode(texts)
-            embeddings = await self.gemini_embedder.aio.models.embed_content(
-                model="gemini-embedding-2",
-                contents=texts,
-                config=types.EmbedContentConfig(output_dimensionality=768)
+        # If file_path is not a local file, download from S3
+        is_s3 = not os.path.exists(file_path)
+        temp_file = None
+        if is_s3:
+            s3_bucket = os.getenv("AWS_S3_BUCKET")
+            s3_client = boto3.client(
+                "s3",
+                aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                region_name=os.getenv("AWS_REGION")
             )
-            format_embeddings = [embedding.values for embedding in embeddings.embeddings]
-        return texts, format_embeddings
+            # file_path is the S3 key
+            temp_fd, temp_path = tempfile.mkstemp(suffix=os.path.splitext(file_path)[1])
+            os.close(temp_fd)
+            with open(temp_path, "wb") as f:
+                s3_client.download_fileobj(s3_bucket, file_path, f)
+            temp_file = temp_path
+        local_path = temp_file if temp_file else file_path
+        try:
+            # parsing document
+            markeddown_text = await self._parse_document(local_path)
+
+            # chunking document
+            with logfire.span("Chunking Document"):
+                chunks = self.chunker(markeddown_text)
+                texts = [chunk.text for chunk in chunks]
+
+            with logfire.span("Embedding Document"):
+                embeddings = await self.gemini_embedder.aio.models.embed_content(
+                    model="gemini-embedding-2",
+                    contents=texts,
+                    config=types.EmbedContentConfig(output_dimensionality=768)
+                )
+                format_embeddings = [embedding.values for embedding in embeddings.embeddings]
+            return texts, format_embeddings
+        finally:
+            if temp_file:
+                try:
+                    os.remove(temp_file)
+                except Exception as e:
+                    logfire.warning(f"Failed to remove temp file {temp_file}: {e}")
 
 
     async def process(self, file_path: str, doc_id: str) -> str:
@@ -123,10 +142,56 @@ class ChunkService:
         return results
     
     async def healthy_check(self):
-        return {"converter": self._converter is not None, 
-                "chunker": self._chunker is not None, 
-                "embedder": self._embedder is not None}
+        return {"chunker": self._chunker is not None, 
+                "embedder": self._gemini_embedder is not None}
     
+    async def get_document(self, activity_id: uuid.UUID):
+        chunkRepo = await get_chunk_repo()
+        return await chunkRepo.get_document_by_activity_id(activity_id)
+    
+    async def get_document_by_activity_id(self, activity_id: uuid.UUID):
+        chunkRepo = await get_chunk_repo()
+        document = await chunkRepo.get_document_by_activity_id(activity_id)
+
+        if document is None:
+            return None
+
+        s3_bucket = os.getenv("AWS_S3_BUCKET")
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION")
+        )
+        try:
+            file_size = s3_client.head_object(Bucket=s3_bucket, Key=document["file_path"])["ContentLength"]
+            document["file_size"] = round(file_size / (1024 * 1024), 2) # Convert to MB
+        except Exception as e:
+            logfire.error(f"Failed to get file size from S3 for {document['file_path']}: {e}")
+            document["file_size"] = None
+        return document
+    
+    async def delete_document_by_activity_id(self, activity_id: uuid.UUID):
+        chunkRepo = await get_chunk_repo()
+        document = await chunkRepo.get_document_by_activity_id(activity_id)
+
+        if document is None:
+            return
+        
+        s3_bucket = os.getenv("AWS_S3_BUCKET")
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION")
+        )
+        try:
+            s3_client.delete_object(Bucket=s3_bucket, Key=document["file_path"])
+        except Exception as e:
+            logfire.error(f"Failed to delete file from S3 for {document['file_path']}: {e}.\nDocument not exists or already deleted.")
+        await chunkRepo.delete_chunks_by_document_id(document["id"])
+        await chunkRepo.delete_document_by_activity_id(activity_id)
+
 _chunk_service = None
 def get_chunk_service():
     global _chunk_service

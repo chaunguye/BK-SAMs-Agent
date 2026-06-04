@@ -112,15 +112,15 @@ async def get_activity_ids_by_name(ctx: RunContext[AgentConfig], activity_name: 
     return json.dumps(activity_details, default=str) if activity_details else "No activity found with the given name."
 
 async def unregister_activity(ctx: RunContext[AgentConfig], 
-                              activity_id: uuid.UUID = Field(..., description="The ID of the activity the student wants to unregister from")) -> str:
+                              activity_details: ActivityDetails = Field(..., description="The details of the activity the student wants to unregister from, obtained from the tool search_activity_by_name")) -> str:
     """
     Unregister the student from the specified activity.
     """
     if not ctx.deps.student_id:  
         return "Student ID is missing. Unable to unregister from the activity."
-    with logfire.span("Unregistering from activity: {}".format(activity_id)):
-        result = await ctx.deps.activity_service.unregister_activity(student_id=ctx.deps.student_id, activity_id=activity_id)
-        logfire.info(f"Unregistering student_id: {ctx.deps.student_id} from activity: {activity_id} with result: {result}")
+    with logfire.span("Unregistering from activity: {}".format(activity_details.id)):
+        result = await ctx.deps.activity_service.unregister_activity(student_id=ctx.deps.student_id, activity_id=activity_details.id)
+        logfire.info(f"Unregistering student_id: {ctx.deps.student_id} from activity: {activity_details.id} with result: {result}")
     return result
 
 async def get_registered_activities(ctx: RunContext[AgentConfig]) -> str:
