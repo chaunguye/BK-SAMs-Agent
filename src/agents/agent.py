@@ -19,7 +19,8 @@ primary_model = GroqModel('openai/gpt-oss-120b')
 secondary_model = GoogleModel('gemini-flash-3.1-flash-lite')
 fallback_model = FallbackModel(primary_model, secondary_model)
 
-capstone_agent = Agent(fallback_model, 
+capstone_agent = Agent(
+                       model = fallback_model, 
                        deps_type = AgentConfig, 
                        output_type=[str, DeferredToolRequests],
                        tools = [search_chunks, 
@@ -54,8 +55,6 @@ def add_current_time() -> str:
     return f"The current date and time is {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
 
 
-capstone_agent.model = primary_model
-
-app = capstone_agent.to_web()
+# app = capstone_agent.to_web()
 
 

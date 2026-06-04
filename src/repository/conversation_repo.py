@@ -17,6 +17,11 @@ class ConversationRepository:
         for data in conversation_data:
             sender_type = self._get_role(data)
             text_content = self._extract_content(data)
+            
+            # Skip saving messages with no text content (e.g., empty UserPromptPart from tool processing)
+            if text_content is None or (isinstance(text_content, str) and not text_content.strip()):
+                continue
+            
             # metadata = data.model_dump_json() if hasattr(data, 'model_dump_json') else jsonable_encoder(data)
             metadata = jsonable_encoder(data.model_dump(mode='json') if hasattr(data, 'model_dump') else data)
             data_to_insert.append((sender_type, text_content, conversation_id, json.dumps(metadata)))
@@ -141,7 +146,10 @@ class ConversationRepository:
             #     # We might want to store that a tool was called in the content
             #     texts.append(f"[Tool Call: {part.tool_name}]")
             elif isinstance(part, UserPromptPart):
-                texts.append(part.content)
+                # Filter out empty UserPromptPart created by pydantic-ai when processing deferred tool results
+                # These are internal pydantic-ai messages and should not be persisted as user content
+                if part.content and part.content.strip():
+                    texts.append(part.content)
         if not texts:
             return None
         return "\n".join(texts)
