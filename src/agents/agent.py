@@ -26,7 +26,6 @@ capstone_agent = Agent(
                        tools = [search_chunks, 
                                 search_activity_chunks, 
                                 search_relevant_activities, 
-                                get_activity_details, 
                                 get_activity_ids_by_name, 
                                 get_registered_activities,
                                 Tool(register_activity, requires_approval=True),

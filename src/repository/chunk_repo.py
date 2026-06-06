@@ -93,17 +93,21 @@ class ChunkRepository:
         results_map = {}
         def process_results(records):
             for rank, record in enumerate(records, start=1):
-                activity_id = record['id']
+                chunk_id = record['id']
                 score = 1 / (k + rank)
+                record_data = dict(record)
                 
-                if activity_id not in results_map:
-                    # Store both the score AND the original record data
-                    results_map[activity_id] = {
-                        "score": score,
-                        "data": dict(record) # Convert asyncpg Record to Dict
+                if chunk_id not in results_map:
+                    # Flatten the chunk data and store the score
+                    results_map[chunk_id] = {
+                        "id": str(record_data.get("id")),
+                        "text_content": record_data.get("text_content"),
+                        "distance": record_data.get("distance"),
+                        "rank": record_data.get("rank"),
+                        "score": score
                     }
                 else:
-                    results_map[activity_id]["score"] += score
+                    results_map[chunk_id]["score"] += score
 
         process_results(semantic_rows)
         process_results(textual_rows)

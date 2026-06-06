@@ -46,10 +46,11 @@ async def search_activity_chunks(ctx: RunContext[AgentConfig],
     with logfire.span("Searching Activity Chunks with query: {}".format(query)):
         relevant_chunks = await chunk_service.search_chunks_of_activity(query, top_k, activity_id)
         logfire.info(f"Found {len(relevant_chunks)} relevant activity chunks: {relevant_chunks}")
-    for chunk in relevant_chunks:
-        if 'id' in chunk:
-            chunk['id'] = str(chunk['id'])
-    return f"Relevant activity chunks: {json.dumps(relevant_chunks, default=str) if relevant_chunks else "No relevant activity chunks found based on the provided query and activity ID."}"
+    
+    if not relevant_chunks:
+        return "No relevant activity chunks found based on the provided query and activity ID."
+
+    return "Relevant activity chunks:\n" + "\n\n".join([chunk["text_content"] for chunk in relevant_chunks])
 
 ActivityStatus = Literal['OPEN', 'CLOSED', 'COMPLETED', 'CANCELLED']
 async def search_relevant_activities(ctx: RunContext[AgentConfig], 

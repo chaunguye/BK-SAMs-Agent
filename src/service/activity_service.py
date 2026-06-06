@@ -37,7 +37,59 @@ class ActivityService:
             contents=activity_name,
             config=types.EmbedContentConfig(output_dimensionality=768)
         )
-        return await activity_repo.get_activity_id_hybrid(activity_name, "[" + ",".join(str(x) for x in activity_embedding.embeddings[0].values) + "]")  
+        rrf_results = await activity_repo.get_activity_id_hybrid(activity_name, "[" + ",".join(str(x) for x in activity_embedding.embeddings[0].values) + "]")
+        return self._filter_rrf_results(rrf_results)
+    
+    def _filter_rrf_results(self, rrf_results):
+        """
+        Filter RRF results based on score patterns:
+        - If 1 activity has moderately higher score than others → return list of 1 activity
+        - If many activities with similar high scores → return list of similar activities
+        - If all activities have low scores → return empty list
+        """
+        if not rrf_results:
+            return []
+        
+        # Extract scores
+        scores = [item["score"] for item in rrf_results]
+        
+        # Define thresholds
+        MAX_SCORE = max(scores) if scores else 0
+        MIN_SCORE = min(scores) if scores else 0
+        
+        # Low score threshold (below 0.015 is considered low based on RRF formula)
+        LOW_SCORE_THRESHOLD = 0.015
+        
+        # If all scores are low, return empty list
+        if MAX_SCORE < LOW_SCORE_THRESHOLD:
+            logfire.info(f"All activities have low scores (max: {MAX_SCORE}). Returning empty list.")
+            return []
+        
+        # Check if top score is significantly higher (at least 50% higher than second highest)
+        if len(rrf_results) > 1:
+            top_score = scores[0]
+            second_score = scores[1]
+            score_ratio = top_score / second_score if second_score > 0 else float('inf')
+            
+            if score_ratio >= 1.5:  # 50% higher threshold
+                logfire.info(f"Top activity has significantly higher score ({top_score:.4f}) vs second ({second_score:.4f}). Returning top 1 activity.")
+                return [rrf_results[0]]
+        
+        # Find activities with similar high scores
+        # Group activities within 10% of the top score
+        top_score = scores[0]
+        similarity_threshold = top_score * 0.9  # 90% of top score
+        similar_activities = [
+            item for item in rrf_results 
+            if item["score"] >= similarity_threshold
+        ]
+        
+        if similar_activities:
+            logfire.info(f"Found {len(similar_activities)} activities with similar high scores (threshold: {similarity_threshold:.4f}). Returning all similar activities.")
+            return similar_activities
+        
+        # Fallback: return empty list if no similar activities found
+        return []  
     async def get_activity_details(self, activity_id: uuid.UUID):
         activity_repo = await get_activity_repo()
         return await activity_repo.get_activity_details(activity_id)

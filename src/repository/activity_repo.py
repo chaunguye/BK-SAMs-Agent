@@ -133,7 +133,7 @@ class ActivityRepository:
             reverse=True
         )
         logfire.info(f"RRF computation completed. Sorted results: {sorted_items if sorted_items else 'No results found'}")
-        return sorted_items[:5] if sorted_items else None
+        return sorted_items if sorted_items else []
 
     async def get_activity_details(self, activity_id: uuid.UUID):
         query = """
