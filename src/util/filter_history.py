@@ -8,7 +8,7 @@ summary_agent = Agent('groq:meta-llama/llama-4-scout-17b-16e-instruct', instruct
         * naming conversations
     """)
 
-async def summarize_conversation(current_summary: ModelMessage | None, messages: list[ModelMessage], latest = 5) -> tuple[ModelMessage, list[ModelMessage]]:
+async def summarize_conversation(current_summary: ModelMessage | None, messages: list[ModelMessage], latest = 2) -> tuple[ModelMessage, list[ModelMessage]]:
     if len(messages) <= latest:
         if current_summary is None:
             return None, messages
@@ -46,7 +46,7 @@ async def summarize_conversation(current_summary: ModelMessage | None, messages:
     return summary_message, recent_messages
 
 async def name_conversation(messages: list[ModelMessage]) -> str:
-    name = await summary_agent.run(f"Based on the following conversation, provide a short, concise and descriptive name for this conversation that captures the main topic and purpose. Response with the name only. The name should be a maximum of 5 words and the name must be in Vietnamese. Conversation: {messages}")
+    name = await summary_agent.run(f"Based on the following conversation, provide a short, concise and descriptive name for this conversation that captures the main topic and purpose. Response with the name only. The name should be a maximum of 5 words and the name must be in Vietnamese. The name must be polite and not contain any offensive language. Conversation: {messages}")
     return name.output
 
 

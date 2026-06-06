@@ -16,8 +16,8 @@ load_dotenv()
 class ConversationService:
     def __init__(self):
         self.messages_adapter = TypeAdapter(list[ModelMessage])
-        self.latest = 3
-        self.max_history = 6
+        self.latest = 2
+        self.max_history = 4
     async def get_conversation(self, conversation_id):
         with logfire.span("Get cache mananger instance"):
             cache = get_cache_manager()
