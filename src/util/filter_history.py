@@ -31,7 +31,7 @@ async def summarize_conversation(current_summary: ModelMessage | None, messages:
     old_messages = messages[:-actual_latest]
 
     current_summary_record_json = json.loads(current_summary) if current_summary else None
-    current_summary_record_text = current_summary_record_json.parts[0].content if current_summary_record_json else ""
+    current_summary_record_text = current_summary_record_json['parts'][0]['content'] if current_summary_record_json else ""
     
     summary = await summary_agent.run(f"Summarize this conversation, omitting small talk and unrelated topics. The max length of the summary is 5 sentences (about 60 to 120 tokens).Focus on the technical discussion and next steps. The current summary of the conversation is: {current_summary_record_text}\n\nThe messages need to be summarizedare: {old_messages}\n\nPlease provide an updated summary of the conversation based on the current summary and the new messages.")
     summary_message = ModelRequest(
