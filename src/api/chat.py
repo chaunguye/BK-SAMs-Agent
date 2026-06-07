@@ -205,12 +205,30 @@ async def websocket_endpoint(websocket: WebSocket,
                         for approval in event.result.output.approvals:
                             # await websocketManager.send_personal_message(conversation_id, f"Please confirm the registration for the activity: {approval.args['name']}\nStatus: {approval.args['status']}\nLocation: {approval.args['location']}\nStart Time: {approval.args['start_time']}\nEnd Time: {approval.args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
                             logfire.info(f"Args for approval: {approval.args}")
+                            tool_name = approval.tool_name
+
+                            if tool_name == "register_activity":
+                                action_verb = "đăng ký"
+                            elif tool_name == "unregister_activity":
+                                action_verb = "hủy đăng ký"
+                            else:
+                                action_verb = "thực hiện"
+                            
                             args = approval.args
                             if isinstance(args, str):
                                 args = json.loads(args)
                             args['start_time'] = datetime.datetime.fromisoformat(args['start_time'])
                             args['end_time'] = datetime.datetime.fromisoformat(args['end_time'])
-                            await websocketManager.send_personal_message(conversation_id, f"Vui lòng xác nhận đăng ký hoạt động: \n{args['name']}\nTình trạng: {args['status']}\nĐịa điểm: {args['location']}\nBắt đầu: {args['start_time'].strftime('%d-%m-%Y %H:%M')}\nKết thúc: {args['end_time'].strftime('%d-%m-%Y %H:%M')}", type="approval", tool_call_id=approval.tool_call_id)
+
+                            message = (
+                                f"Vui lòng xác nhận {action_verb} hoạt động: \n{args['name']}\n"
+                                f"Tình trạng: {args['status']}\n"
+                                f"Địa điểm: {args['location']}\n"
+                                f"Bắt đầu: {args['start_time'].strftime('%d-%m-%Y %H:%M')}\n"
+                                f"Kết thúc: {args['end_time'].strftime('%d-%m-%Y %H:%M')}"
+                            )
+                            
+                            await websocketManager.send_personal_message(conversation_id, message, type="approval", tool_call_id=approval.tool_call_id)
                             # await websocketManager.send_personal_message(conversation_id, f"Vui lòng xác nhận đăng ký hoạt động: \n{args['name']}\nTình trạng: {args['status']}\nĐịa điểm: {args['location']}\nBắt đầu: {args['start_time']}\nKết thúc: {args['end_time']}", type="approval", tool_call_id=approval.tool_call_id)
 
                     else:

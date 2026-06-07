@@ -14,7 +14,7 @@ from src.agents.agent_config import AgentConfig
 load_dotenv()
 
 
-primary_model = GroqModel('groq/compound')
+primary_model = GroqModel('openai/gpt-oss-120b')
 # secondary_model = GroqModel('qwen/qwen3-32b')
 secondary_model = GoogleModel('gemini-3.1-flash-lite')
 fallback_model = FallbackModel(primary_model, secondary_model)
